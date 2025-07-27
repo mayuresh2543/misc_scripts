@@ -2,6 +2,10 @@
 
 set -euo pipefail
 
+# 📁 Log all output to terminal + log file
+LOG_FILE="$HOME/fedora-setup.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
 # ─────────────────────────────────────────────
 # 🔧 Utilities
 # ─────────────────────────────────────────────
@@ -28,6 +32,21 @@ upgrade_system() {
   log "Upgrading system packages..."
   sudo dnf upgrade --refresh -y
   info "System upgraded."
+}
+
+# ─────────────────────────────────────────────
+# 🧩 Enable Third-Party Repositories
+# ─────────────────────────────────────────────
+enable_third_party_repos() {
+  log "Enabling third-party repositories..."
+
+  sudo dnf install -y fedora-workstation-repositories
+
+  sudo dnf install -y \
+    https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+    https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+
+  info "Third-party repos and RPM Fusion enabled."
 }
 
 # ─────────────────────────────────────────────
@@ -158,6 +177,7 @@ summary() {
 
   echo -e "\n\033[1;35m📝 Summary of changes:\033[0m"
   echo -e "  \033[1;32m- 🔄  System updated and DNF optimized\033[0m"
+  echo -e "  \033[1;32m- 🧩  Third-party repositories and RPM Fusion enabled\033[0m"
   echo -e "  \033[1;32m- 🔧  Git installed and configured:\033[0m"
   echo -e "        name : $GIT_NAME"
   echo -e "        email: $GIT_EMAIL"
@@ -169,6 +189,7 @@ summary() {
   echo -e "        • Night light 20:00 → 20:00 @ 4000K"
   echo -e "        • Touchpad right-click set to 'areas'"
   echo
+  echo -e "\033[1;36m📁 Log saved to: $LOG_FILE\033[0m"
 }
 
 # ─────────────────────────────────────────────
@@ -177,6 +198,7 @@ summary() {
 main() {
   optimize_dnf
   upgrade_system
+  enable_third_party_repos
   setup_git
   install_flatpak_and_chrome
   remove_firefox
