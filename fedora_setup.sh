@@ -2,70 +2,54 @@
 
 set -euo pipefail
 
-# ─────────────────────────────────────────────────────
-# 🎨 Logging functions
-# ─────────────────────────────────────────────────────
-log() {
-  echo -e "\n\033[1;36m🔧 $1\033[0m"
-}
+# ─────────────────────────────────────────────
+# 🧩 Logging Helpers
+# ─────────────────────────────────────────────
+log()  { echo -e "\n\033[1;36m🔧 $1\033[0m"; }
+info() { echo -e "\033[1;32m✅ $1\033[0m"; }
+warn() { echo -e "\033[1;33m⚠️  $1\033[0m"; }
 
-info() {
-  echo -e "\033[1;32m✅ $1\033[0m"
-}
-
-warn() {
-  echo -e "\033[1;33m⚠️  $1\033[0m"
-}
-
-# ─────────────────────────────────────────────────────
-# ⚙️ Improve DNF performance
-# ─────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# ⚙️ Improve DNF Configuration
+# ─────────────────────────────────────────────
 log "Optimizing DNF configuration..."
 sudo tee -a /etc/dnf/dnf.conf >/dev/null <<EOF
 deltarpm=true
 max_parallel_downloads=10
 EOF
-info "DNF config tuned."
+info "DNF settings applied."
 
-# ─────────────────────────────────────────────────────
-# ⬆️ System update
-# ─────────────────────────────────────────────────────
-log "Refreshing and upgrading packages..."
+# ─────────────────────────────────────────────
+# ⬆️ Upgrade All Packages
+# ─────────────────────────────────────────────
+log "Upgrading system packages..."
 sudo dnf upgrade --refresh -y
-info "System updated."
+info "System upgraded."
 
-# ─────────────────────────────────────────────────────
-# 🧰 Install and configure Git
-# ─────────────────────────────────────────────────────
-log "Checking if Git is installed..."
-if ! command -v git &>/dev/null; then
-  log "Installing Git..."
-  sudo dnf install -y git
-  info "Git installed."
-else
-  info "Git already present."
-fi
+# ─────────────────────────────────────────────
+# 🧰 Git Installation & Config
+# ─────────────────────────────────────────────
+log "Installing Git (if not present)..."
+sudo dnf install -y git
 
-log "Checking Git user config..."
+log "Checking Git global config..."
 GIT_NAME=$(git config --global user.name || echo "")
 GIT_EMAIL=$(git config --global user.email || echo "")
 
 if [[ -z "$GIT_NAME" || -z "$GIT_EMAIL" ]]; then
-  read -rp "🧑 Enter Git user.name: " input_name
+  read -rp "👤 Enter Git user.name: " input_name
   read -rp "📧 Enter Git user.email: " input_email
   git config --global user.name "$input_name"
   git config --global user.email "$input_email"
   info "Git configured."
 else
-  info "Git config found:"
-  echo "  Name : $GIT_NAME"
-  echo "  Email: $GIT_EMAIL"
+  info "Git already configured: $GIT_NAME <$GIT_EMAIL>"
 fi
 
-# ─────────────────────────────────────────────────────
-# 📦 Enable Flatpak & install Chrome
-# ─────────────────────────────────────────────────────
-log "Installing Flatpak & adding Flathub..."
+# ─────────────────────────────────────────────
+# 📦 Enable Flatpak & Install Chrome
+# ─────────────────────────────────────────────
+log "Installing Flatpak..."
 sudo dnf install -y flatpak
 flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 info "Flatpak ready."
@@ -74,17 +58,17 @@ log "Installing Chrome via Flatpak..."
 flatpak install -y flathub com.google.Chrome
 info "Chrome installed."
 
-# ─────────────────────────────────────────────────────
-# 🗑 Remove Firefox if installed
-# ─────────────────────────────────────────────────────
-log "Removing Firefox (if installed)..."
-sudo dnf remove -y firefox || warn "Firefox not installed."
-info "Firefox removed (or wasn't installed)."
+# ─────────────────────────────────────────────
+# 🗑 Remove Firefox (if installed)
+# ─────────────────────────────────────────────
+log "Removing Firefox if installed..."
+sudo dnf remove -y firefox || warn "Firefox not found."
+info "Firefox cleanup done."
 
-# ─────────────────────────────────────────────────────
-# 🧹 Debloat GNOME apps
-# ─────────────────────────────────────────────────────
-log "Removing GNOME bloat apps..."
+# ─────────────────────────────────────────────
+# 🧹 Remove GNOME Bloat
+# ─────────────────────────────────────────────
+log "Removing pre-installed GNOME apps..."
 GNOME_BLOAT=(
   libreoffice*
   cheese
@@ -106,39 +90,42 @@ for pkg in "${GNOME_BLOAT[@]}"; do
     warn "Not installed: $pkg"
   fi
 done
-info "GNOME cleanup done."
+info "GNOME apps debloated."
 
-# ─────────────────────────────────────────────────────
-# 🎨 GNOME Settings (Night Light, Dark Mode, Touchpad)
-# ─────────────────────────────────────────────────────
-log "Applying GNOME settings..."
+# ─────────────────────────────────────────────
+# 🎨 GNOME Settings (No dbus-launch)
+# ─────────────────────────────────────────────
+log "Applying GNOME UI preferences..."
 
+# Reuse current user and their session D-Bus
 USER_NAME=$(logname)
-USER_ENV=$(sudo -u "$USER_NAME" dbus-launch echo \$DBUS_SESSION_BUS_ADDRESS)
-export DBUS_SESSION_BUS_ADDRESS=$(echo "$USER_ENV" | grep -o 'unix:.*')
+USER_ENV=$(sudo -u "$USER_NAME" bash -c 'echo $DBUS_SESSION_BUS_ADDRESS')
 
-# 🌙 Night Light: always on (20:00 to 20:00)
-sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-  gsettings set org.gnome.settings-daemon.plugins.color night-light-enabled true
+if [[ -z "$USER_ENV" ]]; then
+  warn "Could not detect user DBus session. Skipping GNOME settings."
+else
+  export DBUS_SESSION_BUS_ADDRESS="$USER_ENV"
 
-sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-  gsettings set org.gnome.settings-daemon.plugins.color night-light-schedule-from 20.0
+  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+    gsettings set org.gnome.settings-daemon.plugins.color night-light-enabled true
 
-sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-  gsettings set org.gnome.settings-daemon.plugins.color night-light-schedule-to 20.0
+  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+    gsettings set org.gnome.settings-daemon.plugins.color night-light-schedule-from 20.0
 
-# 🖤 Enable dark mode
-sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-  gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
+  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+    gsettings set org.gnome.settings-daemon.plugins.color night-light-schedule-to 20.0
 
-# 🖱 Enable touchpad right-click
-sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-  gsettings set org.gnome.desktop.peripherals.touchpad click-method 'areas'
+  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+    gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
 
-info "GNOME settings applied."
+  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+    gsettings set org.gnome.desktop.peripherals.touchpad click-method 'areas'
 
-# ─────────────────────────────────────────────────────
+  info "GNOME settings applied."
+fi
+
+# ─────────────────────────────────────────────
 # ✅ Done
-# ─────────────────────────────────────────────────────
-log "🎉 Fedora setup is complete!"
-echo -e "💡 You can reboot to ensure all settings are active.\n"
+# ─────────────────────────────────────────────
+log "🎉 Fedora setup complete."
+echo -e "💡 Tip: Restart your session or reboot to ensure all changes apply.\n"
