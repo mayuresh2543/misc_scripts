@@ -182,7 +182,7 @@ summary() {
   echo -e "        name : $GIT_NAME"
   echo -e "        email: $GIT_EMAIL"
   echo -e "  \033[1;32m- 🌐  Flatpak enabled and Chrome installed\033[0m"
-  echo -e "  \033[1;31m- 🗑️  Firefox removed (if present)\033[0m"
+  echo -e "  \033[1;31m- 🗑️   Firefox removed (if present)\033[0m"
   echo -e "  \033[1;31m- 🧹  GNOME apps and LibreOffice debloated\033[0m"
   echo -e "  \033[1;34m- 🎨  GNOME settings:\033[0m"
   echo -e "        • Dark mode enabled"
