@@ -37,6 +37,9 @@ sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub
 echo "[7/8] Installing Google Chrome via Flatpak..."
 flatpak install -y flathub com.google.Chrome
 
+echo "[7b] Removing Firefox if installed..."
+sudo dnf remove -y firefox || echo "Firefox not installed, skipping."
+
 echo "[8/8] Removing GNOME bloatware..."
 BLOAT_PACKAGES=(
   cheese
