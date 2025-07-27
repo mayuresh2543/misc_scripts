@@ -74,18 +74,19 @@ setup_git() {
 }
 
 # ─────────────────────────────────────────────
-# 📦 Enable Flatpak & Install Chrome
+# 📦 Enable Flatpak & Install Chrome + Extensions
 # ─────────────────────────────────────────────
 install_flatpak_and_chrome() {
   log "Setting up Flatpak and installing Chrome..."
   sudo dnf install -y flatpak
   flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
   flatpak install -y flathub com.google.Chrome
-  info "Chrome installed."
+  flatpak install -y flathub org.gnome.Extensions
+  info "Chrome and GNOME Extensions installed."
 }
 
 # ─────────────────────────────────────────────
-# 🗑 Remove Firefox (Optional)
+# 🗑️ Remove Firefox (Optional)
 # ─────────────────────────────────────────────
 remove_firefox() {
   log "Removing Firefox (if installed)..."
@@ -108,7 +109,6 @@ debloat_gnome() {
     info "No LibreOffice packages found."
   fi
 
-  # GNOME bloat apps
   local bloat_apps=(
     gnome-boxes
     cheese
@@ -131,6 +131,26 @@ debloat_gnome() {
     fi
   done
   info "GNOME apps debloated."
+}
+
+# ─────────────────────────────────────────────
+# 💠 Install and Enable Blur My Shell Extension
+# ─────────────────────────────────────────────
+install_blur_my_shell() {
+  log "Installing 'Blur My Shell' GNOME extension..."
+
+  TEMP_DIR=$(mktemp -d)
+  git clone --depth=1 https://github.com/aunetx/blur-my-shell "$TEMP_DIR/blur-my-shell"
+  cd "$TEMP_DIR/blur-my-shell"
+  make install
+  cd ~
+  rm -rf "$TEMP_DIR"
+
+  USER_NAME=$(logname)
+  EXT_UUID="blur-my-shell@aunetx"
+  sudo -u "$USER_NAME" gnome-extensions enable "$EXT_UUID" || warn "Could not enable Blur My Shell extension."
+
+  info "'Blur My Shell' extension installed and enabled."
 }
 
 # ─────────────────────────────────────────────
@@ -166,6 +186,10 @@ apply_gnome_settings() {
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     gsettings set org.gnome.desktop.peripherals.touchpad click-method 'areas'
 
+  # 🗔 Show window buttons
+  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+    gsettings set org.gnome.desktop.wm.preferences button-layout ":minimize,maximize,close"
+
   info "GNOME settings applied."
 }
 
@@ -179,15 +203,17 @@ summary() {
   echo -e "  \033[1;32m- 🔄  System updated and DNF optimized\033[0m"
   echo -e "  \033[1;32m- 🧩  Third-party repositories and RPM Fusion enabled\033[0m"
   echo -e "  \033[1;32m- 🔧  Git installed and configured:\033[0m"
-  echo -e "        name : $GIT_NAME"
-  echo -e "        email: $GIT_EMAIL"
-  echo -e "  \033[1;32m- 🌐  Flatpak enabled and Chrome installed\033[0m"
+  echo -e "      name : $GIT_NAME"
+  echo -e "      email: $GIT_EMAIL"
+  echo -e "  \033[1;32m- 🌐  Flatpak enabled, Chrome and GNOME Extensions installed\033[0m"
+  echo -e "  \033[1;32m- 💠  Blur My Shell extension installed and enabled\033[0m"
   echo -e "  \033[1;31m- 🗑️   Firefox removed (if present)\033[0m"
   echo -e "  \033[1;31m- 🧹  GNOME apps and LibreOffice debloated\033[0m"
   echo -e "  \033[1;34m- 🎨  GNOME settings:\033[0m"
-  echo -e "        • Dark mode enabled"
-  echo -e "        • Night light 20:00 → 20:00 @ 4000K"
-  echo -e "        • Touchpad right-click set to 'areas'"
+  echo -e "      • Dark mode enabled"
+  echo -e "      • Night light 20:00 → 20:00 @ 4000K"
+  echo -e "      • Touchpad right-click set to 'areas'"
+  echo -e "      • Title bar buttons: minimize, maximize, close"
   echo
   echo -e "\033[1;36m📁 Log saved to: $LOG_FILE\033[0m"
 }
@@ -203,6 +229,7 @@ main() {
   install_flatpak_and_chrome
   remove_firefox
   debloat_gnome
+  install_blur_my_shell
   apply_gnome_settings
   summary
 }
