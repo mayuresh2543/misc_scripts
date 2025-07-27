@@ -1,0 +1,1 @@
+Miscellaneous scripts for various purposes by @mayuresh2543 Licensed under MIT
