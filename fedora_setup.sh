@@ -46,9 +46,11 @@ setup_git() {
     read -rp "📧 Enter Git user.email: " input_email
     git config --global user.name "$input_name"
     git config --global user.email "$input_email"
+    GIT_NAME=$input_name
+    GIT_EMAIL=$input_email
     info "Git configured."
   else
-    info "Git already configured: $GIT_NAME <$GIT_EMAIL>"
+    info "Git already configured."
   fi
 }
 
@@ -73,12 +75,23 @@ remove_firefox() {
 }
 
 # ─────────────────────────────────────────────
-# 🧹 Remove GNOME Bloat Apps
+# 🧹 Remove GNOME Bloat Apps + LibreOffice
 # ─────────────────────────────────────────────
 debloat_gnome() {
   log "Removing GNOME bloat apps..."
+
+  # Remove LibreOffice completely
+  LIBRE_PKGS=$(rpm -qa | grep libreoffice || true)
+  if [[ -n "$LIBRE_PKGS" ]]; then
+    sudo dnf remove -y $LIBRE_PKGS
+    info "Removed LibreOffice packages."
+  else
+    info "No LibreOffice packages found."
+  fi
+
+  # GNOME bloat apps
   local bloat_apps=(
-    libreoffice*
+    gnome-boxes
     cheese
     yelp
     totem
@@ -116,7 +129,7 @@ apply_gnome_settings() {
 
   export DBUS_SESSION_BUS_ADDRESS="$USER_ENV"
 
-  # 🌙 Enable Night Light and schedule
+  # 🌙 Night Light
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     gsettings set org.gnome.settings-daemon.plugins.color night-light-enabled true
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
@@ -130,13 +143,9 @@ apply_gnome_settings() {
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
 
-  # 🖱️ Enable trackpad right-click (areas)
+  # 🖱️ Touchpad right-click
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     gsettings set org.gnome.desktop.peripherals.touchpad click-method 'areas'
-
-  # 🔇 Disable Bluetooth
-  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.system.rfkill bluetooth 'true'
 
   info "GNOME settings applied."
 }
@@ -148,27 +157,32 @@ summary() {
   log "🎉 Fedora setup complete."
 
   echo -e "\n\033[1;35m📝 Summary of changes:\033[0m"
-  echo " - 🔄 System updated and DNF optimized"
-  echo " - 🔧 Git installed and configured"
-  echo " - 🌐 Flatpak enabled and Chrome installed"
-  echo " - 🗑️ Firefox removed (if present)"
-  echo " - 🚫 GNOME bloat apps removed"
-  echo " - 🌙 Night Light enabled (4000K, 20:00–20:00)"
-  echo " - 🕶️ Dark mode enabled"
-  echo " - 🖱️ Trackpad right-click set to 'areas'"
-  echo " - 🔇 Bluetooth disabled (like GNOME GUI toggle)"
-
-  echo -e "\n\033[1;34m💡 Tip: Restart your session or reboot to ensure all changes take full effect.\033[0m\n"
+  echo -e "  \033[1;32m- 🔄  System updated and DNF optimized\033[0m"
+  echo -e "  \033[1;32m- 🔧  Git installed and configured:\033[0m"
+  echo -e "        name : $GIT_NAME"
+  echo -e "        email: $GIT_EMAIL"
+  echo -e "  \033[1;32m- 🌐  Flatpak enabled and Chrome installed\033[0m"
+  echo -e "  \033[1;31m- 🗑️  Firefox removed (if present)\033[0m"
+  echo -e "  \033[1;31m- 🧹  GNOME apps and LibreOffice debloated\033[0m"
+  echo -e "  \033[1;34m- 🎨  GNOME settings:\033[0m"
+  echo -e "        • Dark mode enabled"
+  echo -e "        • Night light 20:00 → 20:00 @ 4000K"
+  echo -e "        • Touchpad right-click set to 'areas'"
+  echo
 }
 
 # ─────────────────────────────────────────────
-# 🚀 Run Everything
+# 🚀 Run All Steps
 # ─────────────────────────────────────────────
-optimize_dnf
-upgrade_system
-setup_git
-install_flatpak_and_chrome
-remove_firefox
-debloat_gnome
-apply_gnome_settings
-summary
+main() {
+  optimize_dnf
+  upgrade_system
+  setup_git
+  install_flatpak_and_chrome
+  remove_firefox
+  debloat_gnome
+  apply_gnome_settings
+  summary
+}
+
+main "$@"
