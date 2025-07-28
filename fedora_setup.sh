@@ -100,7 +100,6 @@ remove_firefox() {
 debloat_gnome() {
   log "Removing GNOME bloat apps..."
 
-  # Remove LibreOffice completely
   LIBRE_PKGS=$(rpm -qa | grep libreoffice || true)
   if [[ -n "$LIBRE_PKGS" ]]; then
     sudo dnf remove -y $LIBRE_PKGS
@@ -110,16 +109,9 @@ debloat_gnome() {
   fi
 
   local bloat_apps=(
-    gnome-boxes
-    cheese
-    yelp
-    totem
-    rhythmbox
-    simple-scan
-    gnome-contacts
-    gnome-maps
-    gnome-weather
-    gnome-characters
+    gnome-boxes cheese yelp totem rhythmbox
+    simple-scan gnome-contacts gnome-maps
+    gnome-weather gnome-characters
   )
 
   for pkg in "${bloat_apps[@]}"; do
@@ -154,6 +146,28 @@ install_blur_my_shell() {
 }
 
 # ─────────────────────────────────────────────
+# 🔒 Setup Firewall, Preload, DNS
+# ─────────────────────────────────────────────
+system_tweaks() {
+  log "Installing preload and enabling service..."
+  sudo dnf install -y preload
+  sudo systemctl enable --now preload
+
+  log "Enabling DNS caching with systemd-resolved..."
+  sudo systemctl enable --now systemd-resolved
+
+  log "Installing and configuring firewall (ufw)..."
+  sudo dnf install -y ufw
+  sudo systemctl enable --now ufw
+  sudo ufw default deny incoming
+  sudo ufw default allow outgoing
+  sudo ufw allow ssh
+  sudo ufw enable
+
+  info "System performance and network optimizations applied."
+}
+
+# ─────────────────────────────────────────────
 # 🎨 GNOME User Settings
 # ─────────────────────────────────────────────
 apply_gnome_settings() {
@@ -168,7 +182,6 @@ apply_gnome_settings() {
 
   export DBUS_SESSION_BUS_ADDRESS="$USER_ENV"
 
-  # 🌙 Night Light
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     gsettings set org.gnome.settings-daemon.plugins.color night-light-enabled true
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
@@ -178,15 +191,10 @@ apply_gnome_settings() {
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     gsettings set org.gnome.settings-daemon.plugins.color night-light-temperature 4000
 
-  # 🕶️ Dark mode
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
-
-  # 🖱️ Touchpad right-click
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     gsettings set org.gnome.desktop.peripherals.touchpad click-method 'areas'
-
-  # 🗔 Show window buttons
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     gsettings set org.gnome.desktop.wm.preferences button-layout ":minimize,maximize,close"
 
@@ -214,6 +222,7 @@ summary() {
   echo -e "      • Night light 20:00 → 20:00 @ 4000K"
   echo -e "      • Touchpad right-click set to 'areas'"
   echo -e "      • Title bar buttons: minimize, maximize, close"
+  echo -e "  \033[1;36m- 🚀  Preload, DNS caching, and UFW firewall configured\033[0m"
   echo
   echo -e "\033[1;36m📁 Log saved to: $LOG_FILE\033[0m"
 }
@@ -231,6 +240,7 @@ main() {
   debloat_gnome
   install_blur_my_shell
   apply_gnome_settings
+  system_tweaks
   summary
 }
 
