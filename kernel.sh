@@ -39,8 +39,8 @@ export SOURCE_DATE_EPOCH=$(date +%s)
 export BUILD_REPRODUCIBLE=1
 
 TOTAL_CORES=$(nproc)
-JOBS=$(( TOTAL_CORES * 8 / 10 ))
-JOBS=$(( JOBS < 1 ? 1 : JOBS ))
+DEFAULT_JOBS=$(( TOTAL_CORES > 1 ? (TOTAL_CORES * 8 / 10) : 1 ))
+JOBS="$DEFAULT_JOBS"
 START_TIME=$(date +%s)
 
 AK3_KERNEL_STRING="Darkmoon"
@@ -73,6 +73,14 @@ read_input() {
   [[ -z "$DEFCONFIG" ]] && error "Defconfig is required."
   [[ "$DEFCONFIG" == *"_defconfig" ]] || DEFCONFIG="${DEFCONFIG}_defconfig"
 
+  echo ""
+  echo "Detected $TOTAL_CORES threads on this system."
+  echo "Default threads for compilation: $DEFAULT_JOBS (80% of total)"
+  read -rp "Enter number of threads to use [default: $DEFAULT_JOBS]: " USER_JOBS
+  if [[ "$USER_JOBS" =~ ^[0-9]+$ ]] && (( USER_JOBS >= 1 )); then
+    JOBS="$USER_JOBS"
+  fi
+
   KERNEL_DIR="$SCRIPT_DIR/$KERNEL_DIR_NAME"
   block_end
 }
@@ -93,13 +101,13 @@ install_deps() {
 
   case "$ID" in
     debian|ubuntu)
-      PKGS=(git curl tar unzip make zip bc flex bison libssl-dev libelf-dev libncurses-dev gcc-aarch64-linux-gnu rsync python3 lz4 pigz)
+      PKGS=(git curl tar unzip make zip bc flex bison libssl-dev libelf-dev libncurses-dev rsync python3 lz4 pigz)
       for p in "${PKGS[@]}"; do dpkg -s "$p" &>/dev/null || MISSING+=("$p"); done ;;
     fedora|rhel|centos)
-      PKGS=(git curl tar unzip make zip bc flex bison openssl-devel elfutils-libelf-devel ncurses-devel gcc-aarch64-linux-gnu rsync python3 lz4 pigz)
+      PKGS=(git curl tar unzip make zip bc flex bison openssl-devel openssl-devel-engine elfutils-libelf-devel ncurses-devel rsync python3 lz4 pigz)
       for p in "${PKGS[@]}"; do rpm -q "$p" &>/dev/null || MISSING+=("$p"); done ;;
     arch)
-      PKGS=(git curl tar unzip make zip bc flex bison openssl elfutils ncurses aarch64-linux-gnu-gcc rsync python lz4 pigz)
+      PKGS=(git curl tar unzip make zip bc flex bison openssl elfutils ncurses rsync python lz4 pigz)
       for p in "${PKGS[@]}"; do pacman -Qi "$p" &>/dev/null || MISSING+=("$p"); done ;;
     *) error "Unsupported distro: $ID" ;;
   esac
