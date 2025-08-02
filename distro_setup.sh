@@ -212,10 +212,17 @@ apply_gnome_settings() {
 }
 
 # ─────────────────────────────────────────────
-# 🧱 Custom Fedora Kernel & ZRAM Setup
+# 🧱 Fedora Optional: Custom Kernel & ZRAM
 # ─────────────────────────────────────────────
+optional_fedora_kernel_zram() {
+  if [[ "$DISTRO" != "fedora" ]]; then return; fi
+  read -rp "🧱 Do you want to install custom Fedora kernel (CachyOS LTO) and configure ZRAM? (y/n): " reply
+  if [[ "$reply" =~ ^[Yy]$ ]]; then
+    setup_custom_kernel_and_zram
+  fi
+}
+
 setup_custom_kernel_and_zram() {
-  [[ "$DISTRO" != "fedora" ]] && return
   log "Installing CachyOS LTO Kernel and configuring ZRAM..."
 
   sudo dnf copr enable -y bieszczaders/kernel-cachyos-lto
@@ -234,6 +241,18 @@ setup_custom_kernel_and_zram() {
   fi
 
   info "Custom kernel and ZRAM configured."
+}
+
+# ─────────────────────────────────────────────
+# 🔐 Fedora Optional: Crypto Legacy Policy
+# ─────────────────────────────────────────────
+optional_crypto_legacy() {
+  if [[ "$DISTRO" != "fedora" ]]; then return; fi
+  read -rp "🔐 Do you want to set crypto policies to LEGACY? (not recommended)? (y/n): " reply
+  if [[ "$reply" =~ ^[Yy]$ ]]; then
+    sudo update-crypto-policies --set LEGACY
+    info "Crypto policy set to LEGACY."
+  fi
 }
 
 # ─────────────────────────────────────────────
@@ -274,8 +293,8 @@ summary() {
   echo -e "        • Title bar buttons: minimize, maximize, close"
   echo -e "        • Files shortcut bound to Super+E"
   echo -e "  \033[1;34m- 🔒  Firewall configured and enabled\033[0m"
-  echo -e "  \033[1;36m- 🧱  Custom Fedora kernel (CachyOS LTO) installed\033[0m"
-  echo -e "        • ZRAM size set to ram * 3.3"
+  echo -e "  \033[1;36m- 🧱  Optional Fedora kernel + ZRAM setup applied (if selected)\033[0m"
+  echo -e "  \033[1;36m- 🔐  Optional Fedora crypto policy changed to LEGACY (if selected)\033[0m"
   echo -e "\n\033[1;36m📁 Log saved to: $LOG_FILE\033[0m"
 }
 
@@ -294,7 +313,8 @@ main() {
   install_blur_my_shell
   apply_gnome_settings
   setup_firewall
-  setup_custom_kernel_and_zram
+  optional_fedora_kernel_zram
+  optional_crypto_legacy
   summary
 }
 
