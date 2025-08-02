@@ -205,6 +205,17 @@ apply_gnome_settings() {
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     gsettings set org.gnome.desktop.wm.preferences button-layout ":minimize,maximize,close"
 
+  # Custom shortcut: Meta+E to launch Files
+  SHORTCUT_PATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/"
+  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['$SHORTCUT_PATH']"
+  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$SHORTCUT_PATH name "Files"
+  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$SHORTCUT_PATH command "nautilus"
+  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$SHORTCUT_PATH binding "<Super>e"
+
   info "GNOME settings applied."
 }
 
@@ -244,6 +255,7 @@ summary() {
   echo -e "        • Night light 20:00 → 20:00 @ 4000K"
   echo -e "        • Touchpad right-click set to 'areas'"
   echo -e "        • Title bar buttons: minimize, maximize, close"
+  echo -e "        • Shortcut '<Super>+E' launches Files"
   echo -e "  \033[1;34m- 🔒  Firewall configured and enabled\033[0m"
   echo -e "\n\033[1;36m📁 Log saved to: $LOG_FILE\033[0m"
 }
