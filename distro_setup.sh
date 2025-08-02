@@ -82,29 +82,28 @@ enable_third_party_repos() {
 # 🧰 Install & Configure Git
 # ─────────────────────────────────────────────
 setup_git() {
-  log "Installing Git..."
+  log "Installing Git and developer tools..."
+
   case "$DISTRO" in
-    fedora) sudo dnf install -y git ;;
-    arch | manjaro) sudo pacman -S --noconfirm git ;;
-    ubuntu | debian) sudo apt install -y git ;;
-    opensuse*) sudo zypper install -y git ;;
+    fedora) sudo dnf install -y git git-lfs repo pahole make libxcrypt-compat openssl openssl-devel-engine ;;
+    arch | manjaro) sudo pacman -S --noconfirm git git-lfs repo pahole make libxcrypt-compat openssl ;;
+    ubuntu | debian) sudo apt install -y git git-lfs repo pahole make libxcrypt-compat openssl ;;
+    opensuse*) sudo zypper install -y git git-lfs repo pahole make libxcrypt-compat openssl ;;
   esac
 
-  log "Checking Git global config..."
-  GIT_NAME=$(git config --global user.name || echo "")
-  GIT_EMAIL=$(git config --global user.email || echo "")
+  log "Configuring Git..."
+  read -rp "👤 Enter Git user.name: " input_name
+  read -rp "📧 Enter Git user.email: " input_email
+  git config --global user.name "$input_name"
+  git config --global user.email "$input_email"
 
-  if [[ -z "$GIT_NAME" || -z "$GIT_EMAIL" ]]; then
-    read -rp "👤 Enter Git user.name: " input_name
-    read -rp "📧 Enter Git user.email: " input_email
-    git config --global user.name "$input_name"
-    git config --global user.email "$input_email"
-    GIT_NAME=$input_name
-    GIT_EMAIL=$input_email
-    info "Git configured."
-  else
-    info "Git already configured."
-  fi
+  read -rp "🔐 Enter your Gerrit username for lineageos.org: " gerrit_user
+  git config --global review.review.lineageos.org.username "$gerrit_user"
+
+  GIT_NAME=$input_name
+  GIT_EMAIL=$input_email
+
+  info "Git configured."
 }
 
 # ─────────────────────────────────────────────
@@ -147,10 +146,7 @@ debloat_gnome() {
   LIBRE_PKGS=$(rpm -qa | grep libreoffice || true)
   [[ -n "$LIBRE_PKGS" ]] && sudo dnf remove -y $LIBRE_PKGS
 
-  local bloat_apps=(
-    gnome-boxes cheese yelp totem rhythmbox simple-scan
-    gnome-contacts gnome-maps gnome-weather gnome-characters
-  )
+  local bloat_apps=(gnome-boxes cheese yelp totem rhythmbox simple-scan gnome-contacts gnome-maps gnome-weather gnome-characters)
 
   for pkg in "${bloat_apps[@]}"; do
     if rpm -q "$pkg" &>/dev/null; then
@@ -189,7 +185,6 @@ apply_gnome_settings() {
   [[ -z "$USER_ENV" ]] && warn "Could not detect user DBus session." && return
   export DBUS_SESSION_BUS_ADDRESS="$USER_ENV"
 
-  # Night Light, Dark Mode, Touchpad, Window Buttons
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     gsettings set org.gnome.settings-daemon.plugins.color night-light-enabled true
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
@@ -204,19 +199,41 @@ apply_gnome_settings() {
     gsettings set org.gnome.desktop.peripherals.touchpad click-method 'areas'
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     gsettings set org.gnome.desktop.wm.preferences button-layout ":minimize,maximize,close"
-
-  # Custom shortcut: Meta+E to launch Files
-  SHORTCUT_PATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/"
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['$SHORTCUT_PATH']"
+    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings/custom0/ name 'Files'
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$SHORTCUT_PATH name "Files"
+    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings/custom0/ command 'nautilus'
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$SHORTCUT_PATH command "nautilus"
+    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings/custom0/ binding '<Super>e'
   sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$SHORTCUT_PATH binding "<Super>e"
+    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/']"
 
   info "GNOME settings applied."
+}
+
+# ─────────────────────────────────────────────
+# 🧱 Custom Fedora Kernel & ZRAM Setup
+# ─────────────────────────────────────────────
+setup_custom_kernel_and_zram() {
+  [[ "$DISTRO" != "fedora" ]] && return
+  log "Installing CachyOS LTO Kernel and configuring ZRAM..."
+
+  sudo dnf copr enable -y bieszczaders/kernel-cachyos-lto
+  sudo dnf install -y kernel-cachyos-lto kernel-cachyos-lto-devel-matched
+  sudo setsebool -P domain_kernel_load_modules on
+
+  sudo dnf copr enable -y bieszczaders/kernel-cachyos-addons
+  sudo dnf install -y cachyos-settings --allowerasing
+  sudo dracut -f
+
+  if [[ -f /usr/lib/systemd/zram-generator.conf ]]; then
+    sudo sed -i 's/^zram-size =.*$/zram-size = "ram * 3.3"/' /usr/lib/systemd/zram-generator.conf
+    info "ZRAM configuration updated to ram * 3.3"
+  else
+    warn "ZRAM config file not found. Skipping edit."
+  fi
+
+  info "Custom kernel and ZRAM configured."
 }
 
 # ─────────────────────────────────────────────
@@ -255,8 +272,10 @@ summary() {
   echo -e "        • Night light 20:00 → 20:00 @ 4000K"
   echo -e "        • Touchpad right-click set to 'areas'"
   echo -e "        • Title bar buttons: minimize, maximize, close"
-  echo -e "        • Shortcut '<Super>+E' launches Files"
+  echo -e "        • Files shortcut bound to Super+E"
   echo -e "  \033[1;34m- 🔒  Firewall configured and enabled\033[0m"
+  echo -e "  \033[1;36m- 🧱  Custom Fedora kernel (CachyOS LTO) installed\033[0m"
+  echo -e "        • ZRAM size set to ram * 3.3"
   echo -e "\n\033[1;36m📁 Log saved to: $LOG_FILE\033[0m"
 }
 
@@ -275,6 +294,7 @@ main() {
   install_blur_my_shell
   apply_gnome_settings
   setup_firewall
+  setup_custom_kernel_and_zram
   summary
 }
 
