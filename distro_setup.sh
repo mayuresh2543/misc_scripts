@@ -42,9 +42,7 @@ EOF
       log "Optimizing Zypper configuration..."
       sudo sed -i 's/^# *parallel-downloads *=.*/parallel-downloads=10/' /etc/zypp/zypp.conf
       ;;
-    *)
-      warn "Package manager optimization not supported for $DISTRO."
-      ;;
+    *) warn "Package manager optimization not supported for $DISTRO." ;;
   esac
   info "Package manager settings applied."
 }
@@ -82,26 +80,40 @@ enable_third_party_repos() {
 # 🧰 Install & Configure Git
 # ─────────────────────────────────────────────
 setup_git() {
-  log "Installing Git and developer tools..."
-
+  log "Installing Git and dev tools..."
   case "$DISTRO" in
-    fedora) sudo dnf install -y git git-lfs repo pahole make libxcrypt-compat openssl openssl-devel-engine ;;
-    arch | manjaro) sudo pacman -S --noconfirm git git-lfs repo pahole make libxcrypt-compat openssl ;;
-    ubuntu | debian) sudo apt install -y git git-lfs repo pahole make libxcrypt-compat openssl ;;
-    opensuse*) sudo zypper install -y git git-lfs repo pahole make libxcrypt-compat openssl ;;
+    fedora)
+      sudo dnf install -y git git-lfs repo pahole libxcrypt-compat openssl openssl-devel kernel-devel make
+      ;;
+    arch | manjaro)
+      sudo pacman -S --noconfirm git git-lfs repo pahole openssl make
+      ;;
+    ubuntu | debian)
+      sudo apt install -y git git-lfs repo pahole libssl-dev make
+      ;;
+    opensuse*)
+      sudo zypper install -y git git-lfs repo pahole libopenssl-devel make
+      ;;
   esac
 
-  log "Configuring Git..."
-  read -rp "👤 Enter Git user.name: " input_name
-  read -rp "📧 Enter Git user.email: " input_email
-  git config --global user.name "$input_name"
-  git config --global user.email "$input_email"
+  log "Checking Git global config..."
+  GIT_NAME=$(git config --global user.name || echo "")
+  GIT_EMAIL=$(git config --global user.email || echo "")
+  GIT_GERRIT=$(git config --global review.review.lineageos.org.username || echo "")
 
-  read -rp "🔐 Enter your Gerrit username for lineageos.org: " gerrit_user
-  git config --global review.review.lineageos.org.username "$gerrit_user"
+  if [[ -z "$GIT_NAME" || -z "$GIT_EMAIL" ]]; then
+    read -rp "👤 Enter Git user.name: " input_name
+    read -rp "📧 Enter Git user.email: " input_email
+    git config --global user.name "$input_name"
+    git config --global user.email "$input_email"
+    GIT_NAME=$input_name
+    GIT_EMAIL=$input_email
+  fi
 
-  GIT_NAME=$input_name
-  GIT_EMAIL=$input_email
+  if [[ -z "$GIT_GERRIT" ]]; then
+    read -rp "🔑 Enter your LineageOS Gerrit username: " input_gerrit
+    git config --global review.review.lineageos.org.username "$input_gerrit"
+  fi
 
   info "Git configured."
 }
@@ -146,7 +158,10 @@ debloat_gnome() {
   LIBRE_PKGS=$(rpm -qa | grep libreoffice || true)
   [[ -n "$LIBRE_PKGS" ]] && sudo dnf remove -y $LIBRE_PKGS
 
-  local bloat_apps=(gnome-boxes cheese yelp totem rhythmbox simple-scan gnome-contacts gnome-maps gnome-weather gnome-characters)
+  local bloat_apps=(
+    gnome-boxes cheese yelp totem rhythmbox simple-scan
+    gnome-contacts gnome-maps gnome-weather gnome-characters
+  )
 
   for pkg in "${bloat_apps[@]}"; do
     if rpm -q "$pkg" &>/dev/null; then
@@ -176,83 +191,36 @@ install_blur_my_shell() {
 }
 
 # ─────────────────────────────────────────────
-# 🎨 GNOME User Settings
+# 🎨 GNOME User Settings + Shortcuts
 # ─────────────────────────────────────────────
 apply_gnome_settings() {
   log "Applying GNOME UI preferences..."
   USER_NAME=$(logname)
-  USER_ENV=$(sudo -u "$USER_NAME" bash -c 'echo $DBUS_SESSION_BUS_ADDRESS')
-  [[ -z "$USER_ENV" ]] && warn "Could not detect user DBus session." && return
-  export DBUS_SESSION_BUS_ADDRESS="$USER_ENV"
 
-  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.settings-daemon.plugins.color night-light-enabled true
-  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.settings-daemon.plugins.color night-light-schedule-from 20.0
-  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.settings-daemon.plugins.color night-light-schedule-to 20.0
-  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.settings-daemon.plugins.color night-light-temperature 4000
-  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
-  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.desktop.peripherals.touchpad click-method 'areas'
-  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.desktop.wm.preferences button-layout ":minimize,maximize,close"
-  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings/custom0/ name 'Files'
-  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings/custom0/ command 'nautilus'
-  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings/custom0/ binding '<Super>e'
-  sudo -u "$USER_NAME" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/']"
+  # Dark Mode, Night Light, Touchpad, Buttons
+  sudo -u "$USER_NAME" gsettings set org.gnome.settings-daemon.plugins.color night-light-enabled true
+  sudo -u "$USER_NAME" gsettings set org.gnome.settings-daemon.plugins.color night-light-schedule-from 20.0
+  sudo -u "$USER_NAME" gsettings set org.gnome.settings-daemon.plugins.color night-light-schedule-to 20.0
+  sudo -u "$USER_NAME" gsettings set org.gnome.settings-daemon.plugins.color night-light-temperature 4000
+  sudo -u "$USER_NAME" gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
+  sudo -u "$USER_NAME" gsettings set org.gnome.desktop.peripherals.touchpad click-method 'areas'
+  sudo -u "$USER_NAME" gsettings set org.gnome.desktop.wm.preferences button-layout ":minimize,maximize,close"
+
+  # Super+E → Nautilus
+  sudo -u "$USER_NAME" gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
+    "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/']"
+
+  sudo -u "$USER_NAME" gsettings set \
+    org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/ \
+    name 'Open Files'
+  sudo -u "$USER_NAME" gsettings set \
+    org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/ \
+    command 'nautilus'
+  sudo -u "$USER_NAME" gsettings set \
+    org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/ \
+    binding '<Super>e'
 
   info "GNOME settings applied."
-}
-
-# ─────────────────────────────────────────────
-# 🧱 Fedora Optional: Custom Kernel & ZRAM
-# ─────────────────────────────────────────────
-optional_fedora_kernel_zram() {
-  if [[ "$DISTRO" != "fedora" ]]; then return; fi
-  read -rp "🧱 Do you want to install custom Fedora kernel (CachyOS LTO) and configure ZRAM? (y/n): " reply
-  if [[ "$reply" =~ ^[Yy]$ ]]; then
-    setup_custom_kernel_and_zram
-  fi
-}
-
-setup_custom_kernel_and_zram() {
-  log "Installing CachyOS LTO Kernel and configuring ZRAM..."
-
-  sudo dnf copr enable -y bieszczaders/kernel-cachyos-lto
-  sudo dnf install -y kernel-cachyos-lto kernel-cachyos-lto-devel-matched
-  sudo setsebool -P domain_kernel_load_modules on
-
-  sudo dnf copr enable -y bieszczaders/kernel-cachyos-addons
-  sudo dnf install -y cachyos-settings --allowerasing
-  sudo dracut -f
-
-  if [[ -f /usr/lib/systemd/zram-generator.conf ]]; then
-    sudo sed -i 's/^zram-size =.*$/zram-size = "ram * 3.3"/' /usr/lib/systemd/zram-generator.conf
-    info "ZRAM configuration updated to ram * 3.3"
-  else
-    warn "ZRAM config file not found. Skipping edit."
-  fi
-
-  info "Custom kernel and ZRAM configured."
-}
-
-# ─────────────────────────────────────────────
-# 🔐 Fedora Optional: Crypto Legacy Policy
-# ─────────────────────────────────────────────
-optional_crypto_legacy() {
-  if [[ "$DISTRO" != "fedora" ]]; then return; fi
-  read -rp "🔐 Do you want to set crypto policies to LEGACY? (not recommended)? (y/n): " reply
-  if [[ "$reply" =~ ^[Yy]$ ]]; then
-    sudo update-crypto-policies --set LEGACY
-    info "Crypto policy set to LEGACY."
-  fi
 }
 
 # ─────────────────────────────────────────────
@@ -271,6 +239,40 @@ setup_firewall() {
 }
 
 # ─────────────────────────────────────────────
+# 🧪 Optional: Dev Setup (Fedora Only)
+# ─────────────────────────────────────────────
+custom_kernel_and_zram() {
+  log "Applying Fedora development tweaks (CachyOS kernel, ZRAM)..."
+
+  sudo dnf copr enable -y bieszczaders/kernel-cachyos-lto
+  sudo dnf install -y kernel-cachyos-lto kernel-cachyos-lto-devel-matched
+
+  sudo setsebool -P domain_kernel_load_modules on
+
+  sudo dnf copr enable -y bieszczaders/kernel-cachyos-addons
+  sudo dnf install -y cachyos-settings --allowerasing
+  sudo dracut -f
+
+  ZRAM_CONF="/usr/lib/systemd/zram-generator.conf"
+  if [[ -f "$ZRAM_CONF" ]]; then
+    sudo sed -i 's/^zram-size *=.*/zram-size = ram*3.3/' "$ZRAM_CONF"
+    info "ZRAM config updated to use ram*3.3"
+  else
+    warn "ZRAM config not found."
+  fi
+}
+
+# ─────────────────────────────────────────────
+# 🛡 Optional: Legacy Crypto Policies (Fedora Only)
+# ─────────────────────────────────────────────
+set_legacy_crypto_policy() {
+  log "Configuring legacy crypto policies..."
+
+  sudo update-crypto-policies --set LEGACY
+  info "Crypto policies set to LEGACY."
+}
+
+# ─────────────────────────────────────────────
 # 🧾 Final Summary
 # ─────────────────────────────────────────────
 summary() {
@@ -282,6 +284,7 @@ summary() {
   echo -e "  \033[1;32m- 🔧  Git installed and configured:\033[0m"
   echo -e "        • name : $GIT_NAME"
   echo -e "        • email: $GIT_EMAIL"
+  echo -e "        • Gerrit: $GIT_GERRIT"
   echo -e "  \033[1;32m- 🌐  Flatpak apps installed (Chrome, Extensions)\033[0m"
   echo -e "  \033[1;32m- 💠  'Blur My Shell' extension installed and enabled\033[0m"
   echo -e "  \033[1;31m- 🗑️   Firefox removed (if present)\033[0m"
@@ -291,10 +294,21 @@ summary() {
   echo -e "        • Night light 20:00 → 20:00 @ 4000K"
   echo -e "        • Touchpad right-click set to 'areas'"
   echo -e "        • Title bar buttons: minimize, maximize, close"
-  echo -e "        • Files shortcut bound to Super+E"
+  echo -e "        • Custom shortcut: Super+E → Files"
   echo -e "  \033[1;34m- 🔒  Firewall configured and enabled\033[0m"
-  echo -e "  \033[1;36m- 🧱  Optional Fedora kernel + ZRAM setup applied (if selected)\033[0m"
-  echo -e "  \033[1;36m- 🔐  Optional Fedora crypto policy changed to LEGACY (if selected)\033[0m"
+
+  if [[ "$DISTRO" == "fedora" && "${dev_setup,,}" == "y" ]]; then
+    echo -e "  \033[1;35m- ⚙️  Fedora dev setup applied:\033[0m"
+    echo -e "        • CachyOS LTO kernel and matching headers installed"
+    echo -e "        • SELinux: domain_kernel_load_modules enabled"
+    echo -e "        • CachyOS performance tweaks installed"
+    echo -e "        • ZRAM size configured to ram*3.3"
+  fi
+
+  if [[ "$DISTRO" == "fedora" && "${crypto_legacy,,}" == "y" ]]; then
+    echo -e "  \033[1;35m- 🔐  Crypto policy set to LEGACY\033[0m"
+  fi
+
   echo -e "\n\033[1;36m📁 Log saved to: $LOG_FILE\033[0m"
 }
 
@@ -313,8 +327,19 @@ main() {
   install_blur_my_shell
   apply_gnome_settings
   setup_firewall
-  optional_fedora_kernel_zram
-  optional_crypto_legacy
+
+  if [[ "$DISTRO" == "fedora" ]]; then
+    read -rp $'\n💬 Do you want to set up your distro for development tasks?\n(This includes CachyOS kernel, ZRAM tweaks, SELinux module loading, etc.) [y/N]: ' dev_setup
+    if [[ "${dev_setup,,}" == "y" ]]; then
+      custom_kernel_and_zram
+    fi
+
+    read -rp $'\n💬 Do you want to set legacy crypto policies? (Not recommended, reverts crypto to older settings) [y/N]: ' crypto_legacy
+    if [[ "${crypto_legacy,,}" == "y" ]]; then
+      set_legacy_crypto_policy
+    fi
+  fi
+
   summary
 }
 
