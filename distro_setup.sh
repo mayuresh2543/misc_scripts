@@ -198,6 +198,7 @@ apply_gnome_settings() {
   log "Applying GNOME UI preferences..."
   USER_NAME=$(logname)
 
+# Dark Mode, Night Light, Touchpad, Buttons
   sudo -u "$USER_NAME" gsettings set org.gnome.settings-daemon.plugins.color night-light-enabled true
   sudo -u "$USER_NAME" gsettings set org.gnome.settings-daemon.plugins.color night-light-schedule-from 20.0
   sudo -u "$USER_NAME" gsettings set org.gnome.settings-daemon.plugins.color night-light-schedule-to 20.0
@@ -206,6 +207,7 @@ apply_gnome_settings() {
   sudo -u "$USER_NAME" gsettings set org.gnome.desktop.peripherals.touchpad click-method 'areas'
   sudo -u "$USER_NAME" gsettings set org.gnome.desktop.wm.preferences button-layout ":minimize,maximize,close"
 
+# Super+E → Nautilus
   sudo -u "$USER_NAME" gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
     "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/']"
 
