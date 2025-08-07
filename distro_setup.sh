@@ -83,7 +83,7 @@ setup_git() {
   log "Installing Git and dev tools..."
   case "$DISTRO" in
     fedora)
-      sudo dnf install -y git git-lfs repo pahole libxcrypt-compat openssl openssl-devel kernel-devel make
+      sudo dnf install -y git git-lfs repo pahole libxcrypt-compat openssl openssl-devel make
       ;;
     arch | manjaro)
       sudo pacman -S --noconfirm git git-lfs repo pahole openssl make
@@ -113,6 +113,7 @@ setup_git() {
   if [[ -z "$GIT_GERRIT" ]]; then
     read -rp "🔑 Enter your LineageOS Gerrit username: " input_gerrit
     git config --global review.review.lineageos.org.username "$input_gerrit"
+    GIT_GERRIT=$input_gerrit
   fi
 
   info "Git configured."
@@ -197,7 +198,6 @@ apply_gnome_settings() {
   log "Applying GNOME UI preferences..."
   USER_NAME=$(logname)
 
-  # Dark Mode, Night Light, Touchpad, Buttons
   sudo -u "$USER_NAME" gsettings set org.gnome.settings-daemon.plugins.color night-light-enabled true
   sudo -u "$USER_NAME" gsettings set org.gnome.settings-daemon.plugins.color night-light-schedule-from 20.0
   sudo -u "$USER_NAME" gsettings set org.gnome.settings-daemon.plugins.color night-light-schedule-to 20.0
@@ -206,7 +206,6 @@ apply_gnome_settings() {
   sudo -u "$USER_NAME" gsettings set org.gnome.desktop.peripherals.touchpad click-method 'areas'
   sudo -u "$USER_NAME" gsettings set org.gnome.desktop.wm.preferences button-layout ":minimize,maximize,close"
 
-  # Super+E → Nautilus
   sudo -u "$USER_NAME" gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
     "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/']"
 
@@ -239,10 +238,10 @@ setup_firewall() {
 }
 
 # ─────────────────────────────────────────────
-# 🧪 Optional: Dev Setup (Fedora Only)
+# ⚙️ Optional: Cachy Kernel (Fedora Only)
 # ─────────────────────────────────────────────
-custom_kernel_and_zram() {
-  log "Applying Fedora development tweaks (CachyOS kernel, ZRAM)..."
+install_cachy_kernel() {
+  log "Installing CachyOS LTO kernel for Fedora..."
 
   sudo dnf copr enable -y bieszczaders/kernel-cachyos-lto
   sudo dnf install -y kernel-cachyos-lto kernel-cachyos-lto-devel-matched
@@ -253,10 +252,22 @@ custom_kernel_and_zram() {
   sudo dnf install -y cachyos-settings --allowerasing
   sudo dracut -f
 
+  info "CachyOS kernel installed and performance tweaks applied."
+}
+
+# ─────────────────────────────────────────────
+# 🧠 Optional: ZRAM Tweaks (Fedora Only)
+# ─────────────────────────────────────────────
+configure_zram() {
+  log "Configuring ZRAM..."
+
   ZRAM_CONF="/usr/lib/systemd/zram-generator.conf"
+  read -rp $'\n💬 Enter ZRAM multiplier (e.g., 3.3 for ram*3.3) [default: 3.3]: ' zram_multiplier
+  zram_multiplier=${zram_multiplier:-3.3}
+
   if [[ -f "$ZRAM_CONF" ]]; then
-    sudo sed -i 's/^zram-size *=.*/zram-size = ram*3.3/' "$ZRAM_CONF"
-    info "ZRAM config updated to use ram*3.3"
+    sudo sed -i "s/^zram-size *=.*/zram-size = ram*${zram_multiplier}/" "$ZRAM_CONF"
+    info "ZRAM size set to ram*${zram_multiplier}"
   else
     warn "ZRAM config not found."
   fi
@@ -267,7 +278,6 @@ custom_kernel_and_zram() {
 # ─────────────────────────────────────────────
 set_legacy_crypto_policy() {
   log "Configuring legacy crypto policies..."
-
   sudo update-crypto-policies --set LEGACY
   info "Crypto policies set to LEGACY."
 }
@@ -297,16 +307,14 @@ summary() {
   echo -e "        • Custom shortcut: Super+E → Files"
   echo -e "  \033[1;34m- 🔒  Firewall configured and enabled\033[0m"
 
-  if [[ "$DISTRO" == "fedora" && "${dev_setup,,}" == "y" ]]; then
-    echo -e "  \033[1;35m- ⚙️  Fedora dev setup applied:\033[0m"
-    echo -e "        • CachyOS LTO kernel and matching headers installed"
-    echo -e "        • SELinux: domain_kernel_load_modules enabled"
-    echo -e "        • CachyOS performance tweaks installed"
-    echo -e "        • ZRAM size configured to ram*3.3"
+  if [[ "$CACHY_KERNEL_APPLIED" == true ]]; then
+    echo -e "  \033[1;35m- ⚙️   CachyOS kernel installed\033[0m"
   fi
-
-  if [[ "$DISTRO" == "fedora" && "${crypto_legacy,,}" == "y" ]]; then
-    echo -e "  \033[1;35m- 🔐  Crypto policy set to LEGACY\033[0m"
+  if [[ "$ZRAM_CONFIGURED" == true ]]; then
+    echo -e "  \033[1;35m- 🧠  ZRAM configured\033[0m"
+  fi
+  if [[ "$LEGACY_CRYPTO_SET" == true ]]; then
+    echo -e "  \033[1;35m- 🛡   Legacy crypto policy applied\033[0m"
   fi
 
   echo -e "\n\033[1;36m📁 Log saved to: $LOG_FILE\033[0m"
@@ -328,15 +336,27 @@ main() {
   apply_gnome_settings
   setup_firewall
 
+  CACHY_KERNEL_APPLIED=false
+  ZRAM_CONFIGURED=false
+  LEGACY_CRYPTO_SET=false
+
   if [[ "$DISTRO" == "fedora" ]]; then
-    read -rp $'\n💬 Do you want to set up your distro for development tasks?\n(This includes CachyOS kernel, ZRAM tweaks, SELinux module loading, etc.) [y/N]: ' dev_setup
-    if [[ "${dev_setup,,}" == "y" ]]; then
-      custom_kernel_and_zram
+    read -rp $'\n💬 Do you want to install the CachyOS kernel? [y/N]: ' install_kernel
+    if [[ "${install_kernel,,}" == "y" ]]; then
+      install_cachy_kernel
+      CACHY_KERNEL_APPLIED=true
     fi
 
-    read -rp $'\n💬 Do you want to set legacy crypto policies? (Not recommended, reverts crypto to older settings) [y/N]: ' crypto_legacy
+    read -rp $'\n💬 Do you want to configure ZRAM? [y/N]: ' configure_zram_choice
+    if [[ "${configure_zram_choice,,}" == "y" ]]; then
+      configure_zram
+      ZRAM_CONFIGURED=true
+    fi
+
+    read -rp $'\n💬 Do you want to set legacy crypto policies? (Not recommended) [y/N]: ' crypto_legacy
     if [[ "${crypto_legacy,,}" == "y" ]]; then
       set_legacy_crypto_policy
+      LEGACY_CRYPTO_SET=true
     fi
   fi
 
