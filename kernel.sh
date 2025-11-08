@@ -43,11 +43,12 @@ DEFAULT_JOBS=$(( TOTAL_CORES > 1 ? (TOTAL_CORES * 8 / 10) : 1 ))
 JOBS="$DEFAULT_JOBS"
 START_TIME=$(date +%s)
 
-AK3_KERNEL_STRING="Darkmoon"
+AK3_KERNEL_STRING="Qgki"
 AK3_DO_DEVICECHECK=1
 AK3_DEVICE_NAME1="moonstone"
 AK3_DEVICE_NAME2="sunstone"
-AK3_DEVICE_NAME3="stone"
+AK3_DEVICE_NAME3="gemstone"
+AK3_DEVICE_NAME4="stone"
 AK3_DO_CLEANUP=1
 
 # ─────────────── 🧑‍💻 USER INPUT ───────────────
@@ -188,10 +189,11 @@ do.devicecheck=$AK3_DO_DEVICECHECK
 device.name1=$AK3_DEVICE_NAME1
 device.name2=$AK3_DEVICE_NAME2
 device.name3=$AK3_DEVICE_NAME3
+device.name4=$AK3_DEVICE_NAME4
 do.cleanup=$AK3_DO_CLEANUP
 '; }
 block=boot; is_slot_device=auto; no_block_display=1
-. tools/ak3-core.sh; split_boot; flash_boot
+. tools/ak3-core.sh; split_boot; flash_boot; flash_dtbo
 EOF
   chmod +x "$ANYKERNEL_DIR/anykernel.sh"
   info "AnyKernel3 ready"$(stage_time); block_end
