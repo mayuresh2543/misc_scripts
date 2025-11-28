@@ -18,6 +18,16 @@ detect_distro() {
   DISTRO=$ID
 }
 
+detect_de() {
+  if [[ "${XDG_CURRENT_DESKTOP-}" =~ "GNOME" ]]; then
+    DE="gnome"
+  elif [[ "${XDG_CURRENT_DESKTOP-}" =~ "KDE" ]]; then
+    DE="kde"
+  else
+    DE="other"
+  fi
+}
+
 # ─────────────────────────────────────────────
 # ⚙️ Optimize Package Manager
 # ─────────────────────────────────────────────
@@ -132,7 +142,12 @@ install_flatpak_apps() {
   esac
 
   sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-  flatpak install -y flathub com.google.Chrome org.gnome.Extensions
+  flatpak install -y flathub com.google.Chrome
+  
+  if [[ "$DE" == "gnome" ]]; then
+    flatpak install -y flathub org.gnome.Extensions
+  fi
+  
   info "Flatpak apps installed."
 }
 
@@ -225,6 +240,40 @@ apply_gnome_settings() {
 }
 
 # ─────────────────────────────────────────────
+# 🐲 KDE Plasma Settings
+# ─────────────────────────────────────────────
+apply_kde_settings() {
+  log "Applying KDE Plasma preferences..."
+  USER_NAME=$(logname)
+
+  # Dark Mode
+  if command -v plasma-apply-lookandfeel &>/dev/null; then
+      sudo -u "$USER_NAME" plasma-apply-lookandfeel -a org.kde.breezedark.desktop
+  elif command -v lookandfeeltool &>/dev/null; then
+      sudo -u "$USER_NAME" lookandfeeltool -a org.kde.breezedark.desktop
+  fi
+
+  # Config Tool
+  if command -v kwriteconfig6 &>/dev/null; then
+      KWRITE="kwriteconfig6"
+  else
+      KWRITE="kwriteconfig5"
+  fi
+  
+  if command -v $KWRITE &>/dev/null; then
+      # Scaling 125%
+      sudo -u "$USER_NAME" $KWRITE --file kdeglobals --group KScreen --key ScaleFactor 1.25
+      
+      # Night Light: Always On, 4000K
+      sudo -u "$USER_NAME" $KWRITE --file kwinrc --group NightColor --key Active true
+      sudo -u "$USER_NAME" $KWRITE --file kwinrc --group NightColor --key Mode Constant
+      sudo -u "$USER_NAME" $KWRITE --file kwinrc --group NightColor --key NightTemperature 4000
+  fi
+
+  info "KDE settings applied."
+}
+
+# ─────────────────────────────────────────────
 # 🔒 Setup Firewall
 # ─────────────────────────────────────────────
 setup_firewall() {
@@ -298,15 +347,25 @@ summary() {
   echo -e "        • email: $GIT_EMAIL"
   echo -e "        • Gerrit: $GIT_GERRIT"
   echo -e "  \033[1;32m- 🌐  Flatpak apps installed (Chrome, Extensions)\033[0m"
-  echo -e "  \033[1;32m- 💠  'Blur My Shell' extension installed and enabled\033[0m"
-  echo -e "  \033[1;31m- 🗑️   Firefox removed (if present)\033[0m"
-  echo -e "  \033[1;31m- 🧹  GNOME apps and LibreOffice debloated\033[0m"
-  echo -e "  \033[1;34m- 🎨  GNOME settings:\033[0m"
-  echo -e "        • Dark mode enabled"
-  echo -e "        • Night light 20:00 → 20:00 @ 4000K"
-  echo -e "        • Touchpad right-click set to 'areas'"
-  echo -e "        • Title bar buttons: minimize, maximize, close"
-  echo -e "        • Custom shortcut: Super+E → Files"
+
+  if [[ "$DE" == "gnome" ]]; then
+      echo -e "  \033[1;32m- 💠  'Blur My Shell' extension installed and enabled\033[0m"
+      echo -e "  \033[1;31m- 🗑️   Firefox removed (if present)\033[0m"
+      echo -e "  \033[1;31m- 🧹  GNOME apps and LibreOffice debloated\033[0m"
+      echo -e "  \033[1;34m- 🎨  GNOME settings:\033[0m"
+      echo -e "        • Dark mode enabled"
+      echo -e "        • Night light 20:00 → 20:00 @ 4000K"
+      echo -e "        • Touchpad right-click set to 'areas'"
+      echo -e "        • Title bar buttons: minimize, maximize, close"
+      echo -e "        • Custom shortcut: Super+E → Files"
+  elif [[ "$DE" == "kde" ]]; then
+      echo -e "  \033[1;31m- 🗑️   Firefox removed (if present)\033[0m"
+      echo -e "  \033[1;34m- 🐲  KDE settings:\033[0m"
+      echo -e "        • Dark mode enabled (Breeze Dark)"
+      echo -e "        • Scaling set to 125%"
+      echo -e "        • Night Light: Always On @ 4000K"
+  fi
+
   echo -e "  \033[1;34m- 🔒  Firewall configured and enabled\033[0m"
 
   if [[ "$CACHY_KERNEL_APPLIED" == true ]]; then
@@ -327,15 +386,22 @@ summary() {
 # ─────────────────────────────────────────────
 main() {
   detect_distro
+  detect_de
   optimize_package_manager
   upgrade_system
   enable_third_party_repos
   setup_git
   install_flatpak_apps
   remove_firefox
-  debloat_gnome
-  install_blur_my_shell
-  apply_gnome_settings
+  
+  if [[ "$DE" == "gnome" ]]; then
+    debloat_gnome
+    install_blur_my_shell
+    apply_gnome_settings
+  elif [[ "$DE" == "kde" ]]; then
+    apply_kde_settings
+  fi
+
   setup_firewall
 
   CACHY_KERNEL_APPLIED=false
