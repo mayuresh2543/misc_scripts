@@ -130,6 +130,20 @@ setup_git() {
 }
 
 # ─────────────────────────────────────────────
+# 💻 Install VS Code (Fedora Only)
+# ─────────────────────────────────────────────
+install_vscode() {
+  [[ "$DISTRO" != "fedora" ]] && return
+
+  log "Setting up Visual Studio Code repository and installing..."
+  sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
+  sudo sh -c 'echo -e "[code]\nname=Visual Studio Code\nbaseurl=https://packages.microsoft.com/yumrepos/vscode\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" > /etc/yum.repos.d/vscode.repo'
+
+  sudo dnf install -y code
+  info "Visual Studio Code installed."
+}
+
+# ─────────────────────────────────────────────
 # 📦 Enable Flatpak & Install Chrome + Extensions
 # ─────────────────────────────────────────────
 install_flatpak_apps() {
@@ -143,11 +157,11 @@ install_flatpak_apps() {
 
   sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
   flatpak install -y flathub com.google.Chrome
-  
+
   if [[ "$DE" == "gnome" ]]; then
     flatpak install -y flathub org.gnome.Extensions
   fi
-  
+
   info "Flatpak apps installed."
 }
 
@@ -248,9 +262,9 @@ apply_kde_settings() {
 
   # Dark Mode
   if command -v plasma-apply-lookandfeel &>/dev/null; then
-      sudo -u "$USER_NAME" plasma-apply-lookandfeel -a org.kde.breezedark.desktop
+      sudo -u "$USER_NAME" plasma-apply-lookandfeel -a org.kde.breezedark.desktop 2>/dev/null
   elif command -v lookandfeeltool &>/dev/null; then
-      sudo -u "$USER_NAME" lookandfeeltool -a org.kde.breezedark.desktop
+      sudo -u "$USER_NAME" lookandfeeltool -a org.kde.breezedark.desktop 2>/dev/null
   fi
 
   # Config Tool
@@ -259,15 +273,15 @@ apply_kde_settings() {
   else
       KWRITE="kwriteconfig5"
   fi
-  
+
   if command -v $KWRITE &>/dev/null; then
       # Scaling 125%
-      sudo -u "$USER_NAME" $KWRITE --file kdeglobals --group KScreen --key ScaleFactor 1.25
-      
+      sudo -u "$USER_NAME" $KWRITE --file kdeglobals --group KScreen --key ScaleFactor 1.25 2>/dev/null
+
       # Night Light: Always On, 4000K
-      sudo -u "$USER_NAME" $KWRITE --file kwinrc --group NightColor --key Active true
-      sudo -u "$USER_NAME" $KWRITE --file kwinrc --group NightColor --key Mode Constant
-      sudo -u "$USER_NAME" $KWRITE --file kwinrc --group NightColor --key NightTemperature 4000
+      sudo -u "$USER_NAME" $KWRITE --file kwinrc --group NightColor --key Active true 2>/dev/null
+      sudo -u "$USER_NAME" $KWRITE --file kwinrc --group NightColor --key Mode Constant 2>/dev/null
+      sudo -u "$USER_NAME" $KWRITE --file kwinrc --group NightColor --key NightTemperature 4000 2>/dev/null
   fi
 
   info "KDE settings applied."
@@ -346,6 +360,11 @@ summary() {
   echo -e "        • name : $GIT_NAME"
   echo -e "        • email: $GIT_EMAIL"
   echo -e "        • Gerrit: $GIT_GERRIT"
+
+  if [[ "$DISTRO" == "fedora" ]]; then
+     echo -e "  \033[1;32m- 💻  Visual Studio Code installed\033[0m"
+  fi
+
   echo -e "  \033[1;32m- 🌐  Flatpak apps installed (Chrome, Extensions)\033[0m"
 
   if [[ "$DE" == "gnome" ]]; then
@@ -382,6 +401,41 @@ summary() {
 }
 
 # ─────────────────────────────────────────────
+# 🚪 Logout Prompt (Safe Version)
+# ─────────────────────────────────────────────
+ask_to_logout() {
+  # Only needed for KDE scaling changes
+  [[ "$DE" != "kde" ]] && return
+
+  USER_NAME=$(logname)
+  echo -e "\n\033[1;33m⚠️  Some changes (like scaling and UI themes) require a logout to fully apply.\033[0m"
+  read -rp "💬 Do you want to log out now? [y/N]: " choice
+  if [[ "${choice,,}" == "y" ]]; then
+      log "Attempting graceful logout..."
+
+      if command -v qdbus6 &>/dev/null; then
+          sudo -u "$USER_NAME" qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logout 2>/dev/null
+      elif command -v qdbus-qt6 &>/dev/null; then
+          sudo -u "$USER_NAME" qdbus-qt6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logout 2>/dev/null
+      elif command -v qdbus &>/dev/null; then
+          # Try Plasma 6 signature first, then Plasma 5
+          if ! sudo -u "$USER_NAME" qdbus org.kde.Shutdown /Shutdown org.kde.Shutdown.logout 2>/dev/null; then
+               sudo -u "$USER_NAME" qdbus org.kde.ksmserver /KSMServer logout 0 0 0 2>/dev/null
+          fi
+      elif command -v dbus-send &>/dev/null; then
+          # Try dbus-send (Plasma 6 then Plasma 5)
+          if ! sudo -u "$USER_NAME" dbus-send --session --dest=org.kde.Shutdown --type=method_call /Shutdown org.kde.Shutdown.logout 2>/dev/null; then
+               sudo -u "$USER_NAME" dbus-send --session --dest=org.kde.ksmserver --type=method_call /KSMServer org.kde.KSMServerInterface.logout int32:0 int32:0 int32:0 2>/dev/null
+          fi
+      else
+          warn "Could not find KDE logout tool. Please log out manually."
+      fi
+  else
+      log "Please remember to log out manually for all changes to take effect."
+  fi
+}
+
+# ─────────────────────────────────────────────
 # 🚀 Run Everything
 # ─────────────────────────────────────────────
 main() {
@@ -391,9 +445,10 @@ main() {
   upgrade_system
   enable_third_party_repos
   setup_git
+  install_vscode
   install_flatpak_apps
   remove_firefox
-  
+
   if [[ "$DE" == "gnome" ]]; then
     debloat_gnome
     install_blur_my_shell
@@ -429,6 +484,7 @@ main() {
   fi
 
   summary
+  ask_to_logout
 }
 
 main "$@"
