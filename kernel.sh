@@ -28,10 +28,13 @@ SCRIPT_DIR="$(pwd)"
 OUTPUT_DIR="$SCRIPT_DIR/out"
 CLANG_DIR="$SCRIPT_DIR/clang"
 ANYKERNEL_DIR="$SCRIPT_DIR/AnyKernel3"
-ZIP_NAME="stone-kernel-$(date +%Y%m%d-%H%M).zip"
+ZIP_NAME="Vertex-stone-$(date +%Y%m%d-%H%M).zip"
 
-DEFAULT_CLANG_URL="https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379/-/archive/15.0/android_prebuilts_clang_host_linux-x86_clang-r547379-15.0.tar.gz"
-ANYKERNEL_REPO="https://github.com/osm0sis/AnyKernel3.git"
+CLANG_REPO="greenforce-project/greenforce_clang"
+CLANG_BRANCH="main"
+
+ANYKERNEL3_GIT="https://github.com/mayuresh2543/AnyKernel3.git"
+ANYKERNEL3_BRANCH="stone"
 
 export KBUILD_BUILD_USER="android-build"
 export KBUILD_BUILD_HOST="localhost"
@@ -43,22 +46,10 @@ DEFAULT_JOBS=$(( TOTAL_CORES > 1 ? (TOTAL_CORES * 8 / 10) : 1 ))
 JOBS="$DEFAULT_JOBS"
 START_TIME=$(date +%s)
 
-AK3_KERNEL_STRING="Darkmoon"
-AK3_DO_DEVICECHECK=1
-AK3_DEVICE_NAME1="moonstone"
-AK3_DEVICE_NAME2="sunstone"
-AK3_DEVICE_NAME3="stone"
-AK3_DO_CLEANUP=1
-
 # ─────────────── 🧑‍💻 USER INPUT ───────────────
 read_input() {
   block_start "🧑‍💻 USER INPUT"
   echo -e "${BOLD}🛠️  Stone Kernel Build Configuration${RESET}\n"
-  echo "Clang Toolchain URL:"
-  echo "  Leave blank to use default crDroid Clang:"
-  printf "  ${GRAY}%s${RESET}\n\n" "$DEFAULT_CLANG_URL"
-  read -rp "Enter Clang URL [default]: " CLANG_URL
-  CLANG_URL="${CLANG_URL:-$DEFAULT_CLANG_URL}"
 
   read -rp "Kernel repository URL: " KERNEL_REPO
   [[ -z "$KERNEL_REPO" ]] && error "Kernel repo URL is required."
@@ -101,13 +92,13 @@ install_deps() {
 
   case "$ID" in
     debian|ubuntu)
-      PKGS=(git curl tar unzip make zip bc flex bison libssl-dev libelf-dev libncurses-dev rsync python3 lz4 pigz)
+      PKGS=(git curl tar unzip make zip bc flex bison libssl-dev libelf-dev libncurses-dev rsync python3 lz4 pigz wget)
       for p in "${PKGS[@]}"; do dpkg -s "$p" &>/dev/null || MISSING+=("$p"); done ;;
     fedora|rhel|centos)
-      PKGS=(git curl tar unzip make zip bc flex bison openssl-devel openssl-devel-engine elfutils-libelf-devel ncurses-devel rsync python3 lz4 pigz)
+      PKGS=(git curl tar unzip make zip bc flex bison openssl-devel openssl-devel-engine elfutils-libelf-devel ncurses-devel rsync python3 lz4 pigz wget)
       for p in "${PKGS[@]}"; do rpm -q "$p" &>/dev/null || MISSING+=("$p"); done ;;
     arch)
-      PKGS=(git curl tar unzip make zip bc flex bison openssl elfutils ncurses rsync python lz4 pigz)
+      PKGS=(git curl tar unzip make zip bc flex bison openssl elfutils ncurses rsync python lz4 pigz wget)
       for p in "${PKGS[@]}"; do pacman -Qi "$p" &>/dev/null || MISSING+=("$p"); done ;;
     *) error "Unsupported distro: $ID" ;;
   esac
@@ -132,8 +123,11 @@ show_summary() {
   info "Kernel Branch     : $KERNEL_BRANCH"
   info "Kernel Directory  : $KERNEL_DIR"
   info "Defconfig         : $DEFCONFIG"
-  info "Clang URL         : $CLANG_URL"
+  info "Clang Repo        : $CLANG_REPO"
+  info "Clang Branch      : $CLANG_BRANCH"
   info "Clang Directory   : $CLANG_DIR"
+  info "AnyKernel3 Repo   : $ANYKERNEL3_GIT"
+  info "AnyKernel3 Branch : $ANYKERNEL3_BRANCH"
   info "AnyKernel3 Dir    : $ANYKERNEL_DIR"
   info "Output Directory  : $OUTPUT_DIR"
   info "ZIP Output Name   : $ZIP_NAME"
@@ -153,18 +147,25 @@ build_kernel() {
 
   start_stage; info "📥 Downloading Clang toolchain..."
   mkdir -p "$CLANG_DIR"
-  if [[ "$CLANG_URL" == *.tar.gz ]]; then
-    curl -L "$CLANG_URL" | tar xz -C "$CLANG_DIR" --strip-components=1
-  elif [[ "$CLANG_URL" == *.zip ]]; then
-    curl -Lo clang.zip "$CLANG_URL"
-    unzip clang.zip -d "$CLANG_DIR"
-    rm clang.zip
-  else
-    error "Invalid Clang archive format."
-  fi
+  cd "$CLANG_DIR"
+  
+  wget -q https://raw.githubusercontent.com/$CLANG_REPO/$CLANG_BRANCH/get_latest_url.sh
+  [ -f "get_latest_url.sh" ] || error "Failed to download get_latest_url.sh"
+  source get_latest_url.sh; rm -rf get_latest_url.sh
+  [ -z "$LATEST_URL" ] && error "LATEST_URL not set by script."
+  
+  info "Downloading Clang from $LATEST_URL"
+  wget -q $LATEST_URL -O "Clang.tar.gz"
+  [ -f "Clang.tar.gz" ] || error "Failed to download Clang tarball."
+  
+  tar -xf Clang.tar.gz
+  rm -f Clang.tar.gz
+  
+  cd "$SCRIPT_DIR"
+  
   export PATH="$CLANG_DIR/bin:$PATH"
   for b in clang ld.lld llvm-ar llvm-nm llvm-strip llvm-objcopy llvm-objdump; do
-    [ -x "$CLANG_DIR/bin/$b" ] || error "$b not found in Clang toolchain."
+    [ -x "$CLANG_DIR/bin/$b" ] || error "$b not found in Clang toolchain ($CLANG_DIR/bin/$b)."
   done
   info "Toolchain ready"$(stage_time); block_end
 
@@ -179,21 +180,7 @@ build_kernel() {
 
   block_start "📥 CLONE ANYKERNEL3"
   start_stage
-  git clone --depth=1 "$ANYKERNEL_REPO" "$ANYKERNEL_DIR"
-  cat > "$ANYKERNEL_DIR/anykernel.sh" <<EOF
-#!/bin/bash
-properties() { '
-kernel.string=$AK3_KERNEL_STRING
-do.devicecheck=$AK3_DO_DEVICECHECK
-device.name1=$AK3_DEVICE_NAME1
-device.name2=$AK3_DEVICE_NAME2
-device.name3=$AK3_DEVICE_NAME3
-do.cleanup=$AK3_DO_CLEANUP
-'; }
-block=boot; is_slot_device=auto; no_block_display=1
-. tools/ak3-core.sh; split_boot; flash_boot
-EOF
-  chmod +x "$ANYKERNEL_DIR/anykernel.sh"
+  git clone --depth=1 "$ANYKERNEL3_GIT" -b "$ANYKERNEL3_BRANCH" "$ANYKERNEL_DIR"
   info "AnyKernel3 ready"$(stage_time); block_end
 
   block_start "🧵 KERNEL COMPILATION"
@@ -206,7 +193,6 @@ EOF
 
   make O="$OUTPUT_DIR" distclean mrproper
   make O="$OUTPUT_DIR" "$DEFCONFIG"
-  echo 'CONFIG_LOCALVERSION="-secure"' >> "$OUTPUT_DIR/.config"
   make O="$OUTPUT_DIR" -j"$JOBS" LOCALVERSION= KBUILD_BUILD_USER="$KBUILD_BUILD_USER" KBUILD_BUILD_HOST="$KBUILD_BUILD_HOST"
 
   IMAGE="$OUTPUT_DIR/arch/arm64/boot/Image"
@@ -215,10 +201,26 @@ EOF
 
   block_start "📦 CREATE FLASHABLE ZIP"
   start_stage
+  
+  [ -f "$IMAGE" ] || error "Kernel Image not found after build (path: $IMAGE)"
   cp "$IMAGE" "$ANYKERNEL_DIR"/
-  for dt in dtbo.img dtb.img; do
-    [ -f "$OUTPUT_DIR/arch/arm64/boot/$dt" ] && cp "$OUTPUT_DIR/arch/arm64/boot/$dt" "$ANYKERNEL_DIR"/
-  done
+
+  DTB="$OUTPUT_DIR/arch/arm64/boot/dtb.img"
+  DTBO="$OUTPUT_DIR/arch/arm64/boot/dtbo.img"
+
+  if [ -f "$DTB" ]; then
+      mkdir -p "$ANYKERNEL_DIR/"
+      cp "$DTB" "$ANYKERNEL_DIR/"
+  else
+      warn "dtb.img not found, skipping copy."
+  fi
+
+  if [ -f "$DTBO" ]; then
+      cp "$DTBO" "$ANYKERNEL_DIR"/
+  else
+      warn "dtbo.img not found, skipping copy."
+  fi
+  
   cd "$ANYKERNEL_DIR"
   zip -r9 "../$ZIP_NAME" * -x '*.git*' '*.md' '*.placeholder'
   info "ZIP packaged"$(stage_time); block_end
