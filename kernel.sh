@@ -205,22 +205,6 @@ build_kernel() {
   [ -f "$IMAGE" ] || error "Kernel Image not found after build (path: $IMAGE)"
   cp "$IMAGE" "$ANYKERNEL_DIR"/
 
-  DTB="$OUTPUT_DIR/arch/arm64/boot/dtb.img"
-  DTBO="$OUTPUT_DIR/arch/arm64/boot/dtbo.img"
-
-  if [ -f "$DTB" ]; then
-      mkdir -p "$ANYKERNEL_DIR/"
-      cp "$DTB" "$ANYKERNEL_DIR/"
-  else
-      warn "dtb.img not found, skipping copy."
-  fi
-
-  if [ -f "$DTBO" ]; then
-      cp "$DTBO" "$ANYKERNEL_DIR"/
-  else
-      warn "dtbo.img not found, skipping copy."
-  fi
-  
   cd "$ANYKERNEL_DIR"
   zip -r9 "../$ZIP_NAME" * -x '*.git*' '*.md' '*.placeholder'
   info "ZIP packaged"$(stage_time); block_end
