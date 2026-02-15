@@ -215,8 +215,8 @@ build_kernel() {
   echo -e "${GRAY}────────────────────────────────────────────${RESET}"
   echo -e "📦 ${BOLD}Flashable ZIP   ${RESET}: $ZIP_NAME"
   echo -e "📁 ${BOLD}Location        ${RESET}: $SCRIPT_DIR/$ZIP_NAME"
-  echo -e "⚙️  ${BOLD}Cores Utilized  ${RESET}: $JOBS"
-  echo -e "⏱️  ${BOLD}Build Duration  ${RESET}: ${BUILD_DURATION}s"
+  echo -e "⚙️ ${BOLD}Cores Utilized  ${RESET}: $JOBS"
+  echo -e "⏱️ ${BOLD}Build Duration  ${RESET}: ${BUILD_DURATION}s"
   echo -e "${GRAY}────────────────────────────────────────────${RESET}\n"
 }
 
