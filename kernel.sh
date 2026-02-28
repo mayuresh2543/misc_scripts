@@ -221,6 +221,10 @@ build_kernel() {
 }
 
 # ─────────────── 🚀 MAIN ───────────────
+LOG_FILE="$SCRIPT_DIR/build_$(date +%Y%m%d-%H%M).log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+info "Logging all script output to: $LOG_FILE"
+
 read_input
 install_deps
 show_summary
