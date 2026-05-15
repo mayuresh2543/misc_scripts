@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 #
 # 🪨 Stone Kernel Build Script — Modular & Styled
-# Original: @enamulhasanabid — Revamped by @mayuresh2543
 
 set -euo pipefail
 
@@ -148,21 +147,21 @@ build_kernel() {
   start_stage; info "📥 Downloading Clang toolchain..."
   mkdir -p "$CLANG_DIR"
   cd "$CLANG_DIR"
-  
+
   wget -q https://raw.githubusercontent.com/$CLANG_REPO/$CLANG_BRANCH/get_latest_url.sh
   [ -f "get_latest_url.sh" ] || error "Failed to download get_latest_url.sh"
   source get_latest_url.sh; rm -rf get_latest_url.sh
   [ -z "$LATEST_URL" ] && error "LATEST_URL not set by script."
-  
+
   info "Downloading Clang from $LATEST_URL"
   wget -q $LATEST_URL -O "Clang.tar.gz"
   [ -f "Clang.tar.gz" ] || error "Failed to download Clang tarball."
-  
+
   tar -xf Clang.tar.gz
   rm -f Clang.tar.gz
-  
+
   cd "$SCRIPT_DIR"
-  
+
   export PATH="$CLANG_DIR/bin:$PATH"
   for b in clang ld.lld llvm-ar llvm-nm llvm-strip llvm-objcopy llvm-objdump; do
     [ -x "$CLANG_DIR/bin/$b" ] || error "$b not found in Clang toolchain ($CLANG_DIR/bin/$b)."
@@ -201,7 +200,7 @@ build_kernel() {
 
   block_start "📦 CREATE FLASHABLE ZIP"
   start_stage
-  
+
   [ -f "$IMAGE" ] || error "Kernel Image not found after build (path: $IMAGE)"
   cp "$IMAGE" "$ANYKERNEL_DIR"/
 
