@@ -29,8 +29,7 @@ CLANG_DIR="$SCRIPT_DIR/clang"
 ANYKERNEL_DIR="$SCRIPT_DIR/AnyKernel3"
 ZIP_NAME="Vertex-stone-$(date +%Y%m%d-%H%M).zip"
 
-CLANG_REPO="greenforce-project/greenforce_clang"
-CLANG_BRANCH="main"
+CLANG_REPO="bachnxuan/aosp_clang_mirror"
 
 ANYKERNEL3_GIT="https://github.com/mayuresh2543/AnyKernel3.git"
 ANYKERNEL3_BRANCH="stone"
@@ -123,7 +122,6 @@ show_summary() {
   info "Kernel Directory  : $KERNEL_DIR"
   info "Defconfig         : $DEFCONFIG"
   info "Clang Repo        : $CLANG_REPO"
-  info "Clang Branch      : $CLANG_BRANCH"
   info "Clang Directory   : $CLANG_DIR"
   info "AnyKernel3 Repo   : $ANYKERNEL3_GIT"
   info "AnyKernel3 Branch : $ANYKERNEL3_BRANCH"
@@ -148,10 +146,8 @@ build_kernel() {
   mkdir -p "$CLANG_DIR"
   cd "$CLANG_DIR"
 
-  wget -q https://raw.githubusercontent.com/$CLANG_REPO/$CLANG_BRANCH/get_latest_url.sh
-  [ -f "get_latest_url.sh" ] || error "Failed to download get_latest_url.sh"
-  source get_latest_url.sh; rm -rf get_latest_url.sh
-  [ -z "$LATEST_URL" ] && error "LATEST_URL not set by script."
+  LATEST_URL=$(curl -s https://api.github.com/repos/$CLANG_REPO/releases/latest | grep "browser_download_url.*\.tar\.gz" | cut -d '"' -f 4)
+  [ -z "$LATEST_URL" ] && error "Failed to fetch LATEST_URL from GitHub API."
 
   info "Downloading Clang from $LATEST_URL"
   wget -q $LATEST_URL -O "Clang.tar.gz"
