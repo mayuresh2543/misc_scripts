@@ -254,6 +254,40 @@ apply_gnome_settings() {
 }
 
 # ─────────────────────────────────────────────
+# 🧹 Remove KDE Bloat Apps + LibreOffice
+# ─────────────────────────────────────────────
+debloat_kde() {
+  log "Removing KDE bloat apps..."
+
+  LIBRE_PKGS=$(rpm -qa | grep libreoffice || true)
+  [[ -n "$LIBRE_PKGS" ]] && sudo dnf remove -y $LIBRE_PKGS
+
+  local bloat_apps=(
+    # Discover / App Stores
+    dnfdragora
+    # Multimedia
+    elisa dragon kamoso juk haruna kwave krecorder
+    # Games
+    kmahjongg kmines kpat ksudoku kigo
+    # Internet/PIM
+    falkon konqueror ktorrent kget kmail korganizer kaddressbook kontact akregator neochat tokodon kdeconnect kde-connect
+    # Viewers
+    okular gwenview spectacle
+    # Utilities
+    kcalc kcharselect kdf krfb krdc mediawriter sweeper kcolorchooser kruler kbackup filelight kolourpaint kompare kamera skanpage skanlite kfloppy
+    # Misc/Accessibility
+    kmouth kmousetool kmag ktimer plasma-welcome kfind knotes kweather kclock kcron kgpg kleopatra partitionmanager kgamma5 abrt kwalletmanager5 kwalletmanager print-manager
+  )
+
+  for pkg in "${bloat_apps[@]}"; do
+    if rpm -q "$pkg" &>/dev/null; then
+      sudo dnf remove -y "$pkg"
+    fi
+  done
+  info "KDE apps debloated."
+}
+
+# ─────────────────────────────────────────────
 # 🐲 KDE Plasma Settings
 # ─────────────────────────────────────────────
 apply_kde_settings() {
@@ -369,7 +403,7 @@ summary() {
 
   if [[ "$DE" == "gnome" ]]; then
       echo -e "  \033[1;32m- 💠  'Blur My Shell' extension installed and enabled\033[0m"
-      echo -e "  \033[1;31m- 🗑️   Firefox removed (if present)\033[0m"
+      echo -e "  \033[1;31m- 🗑️  Firefox removed (if present)\033[0m"
       echo -e "  \033[1;31m- 🧹  GNOME apps and LibreOffice debloated\033[0m"
       echo -e "  \033[1;34m- 🎨  GNOME settings:\033[0m"
       echo -e "        • Dark mode enabled"
@@ -378,7 +412,8 @@ summary() {
       echo -e "        • Title bar buttons: minimize, maximize, close"
       echo -e "        • Custom shortcut: Super+E → Files"
   elif [[ "$DE" == "kde" ]]; then
-      echo -e "  \033[1;31m- 🗑️   Firefox removed (if present)\033[0m"
+      echo -e "  \033[1;31m- 🗑️  Firefox removed (if present)\033[0m"
+      echo -e "  \033[1;31m- 🧹  KDE apps and LibreOffice debloated\033[0m"
       echo -e "  \033[1;34m- 🐲  KDE settings:\033[0m"
       echo -e "        • Dark mode enabled (Breeze Dark)"
       echo -e "        • Scaling set to 125%"
@@ -454,6 +489,7 @@ main() {
     install_blur_my_shell
     apply_gnome_settings
   elif [[ "$DE" == "kde" ]]; then
+    debloat_kde
     apply_kde_settings
   fi
 
