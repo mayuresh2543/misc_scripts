@@ -58,6 +58,37 @@ read_input() {
   read -rp "Kernel directory name (e.g., my_kernel): " KERNEL_DIR_NAME
   [[ -z "$KERNEL_DIR_NAME" ]] && error "Kernel directory name is required."
 
+  KERNEL_DIR="$SCRIPT_DIR/$KERNEL_DIR_NAME"
+  REUSE_SOURCE=false
+  if [ -d "$KERNEL_DIR" ]; then
+    read -rp "Directory '$KERNEL_DIR_NAME' already exists. Use currently synced source? [Y/n]: " ans_reuse
+    if [[ "$ans_reuse" =~ ^[Nn]$ ]]; then
+      REUSE_SOURCE=false
+    else
+      REUSE_SOURCE=true
+    fi
+  fi
+
+  REUSE_CLANG=false
+  if [ -d "$CLANG_DIR" ]; then
+    read -rp "Directory 'clang' already exists. Use currently synced source? [Y/n]: " ans_reuse_clang
+    if [[ "$ans_reuse_clang" =~ ^[Nn]$ ]]; then
+      REUSE_CLANG=false
+    else
+      REUSE_CLANG=true
+    fi
+  fi
+
+  REUSE_ANYKERNEL=false
+  if [ -d "$ANYKERNEL_DIR" ]; then
+    read -rp "Directory 'AnyKernel3' already exists. Use currently synced source? [Y/n]: " ans_reuse_ak3
+    if [[ "$ans_reuse_ak3" =~ ^[Nn]$ ]]; then
+      REUSE_ANYKERNEL=false
+    else
+      REUSE_ANYKERNEL=true
+    fi
+  fi
+
   read -rp "Kernel defconfig name (e.g., stone): " DEFCONFIG
   [[ -z "$DEFCONFIG" ]] && error "Defconfig is required."
   [[ "$DEFCONFIG" == *"_defconfig" ]] || DEFCONFIG="${DEFCONFIG}_defconfig"
@@ -70,7 +101,6 @@ read_input() {
     JOBS="$USER_JOBS"
   fi
 
-  KERNEL_DIR="$SCRIPT_DIR/$KERNEL_DIR_NAME"
   block_end
 }
 
@@ -120,12 +150,15 @@ show_summary() {
   info "Kernel Repository : $KERNEL_REPO"
   info "Kernel Branch     : $KERNEL_BRANCH"
   info "Kernel Directory  : $KERNEL_DIR"
+  info "Reuse Source      : $REUSE_SOURCE"
   info "Defconfig         : $DEFCONFIG"
   info "Clang Repo        : $CLANG_REPO"
   info "Clang Directory   : $CLANG_DIR"
+  info "Reuse Clang       : $REUSE_CLANG"
   info "AnyKernel3 Repo   : $ANYKERNEL3_GIT"
   info "AnyKernel3 Branch : $ANYKERNEL3_BRANCH"
   info "AnyKernel3 Dir    : $ANYKERNEL_DIR"
+  info "Reuse AnyKernel3  : $REUSE_ANYKERNEL"
   info "Output Directory  : $OUTPUT_DIR"
   info "ZIP Output Name   : $ZIP_NAME"
   info "Build User/Host   : $KBUILD_BUILD_USER@$KBUILD_BUILD_HOST"
@@ -139,24 +172,35 @@ show_summary() {
 # ─────────────── 🧪 BUILD PROCESS ───────────────
 build_kernel() {
   block_start "🧪 KERNEL BUILD PROCESS"
-  rm -rf "$OUTPUT_DIR" "$ANYKERNEL_DIR"
+  rm -rf "$OUTPUT_DIR"
+  if [ "$REUSE_ANYKERNEL" != true ]; then
+    rm -rf "$ANYKERNEL_DIR"
+  fi
   mkdir -p "$OUTPUT_DIR"
 
   start_stage; info "📥 Downloading Clang toolchain..."
-  mkdir -p "$CLANG_DIR"
-  cd "$CLANG_DIR"
+  if [ "$REUSE_CLANG" = true ]; then
+    info "Using existing Clang toolchain in '$CLANG_DIR'."
+  else
+    if [ -d "$CLANG_DIR" ]; then
+      warn "Clang directory '$CLANG_DIR' already exists. Removing to avoid conflicts."
+      rm -rf "$CLANG_DIR"
+    fi
+    mkdir -p "$CLANG_DIR"
+    cd "$CLANG_DIR"
 
-  LATEST_URL=$(curl -s https://api.github.com/repos/$CLANG_REPO/releases/latest | grep "browser_download_url.*\.tar\.gz" | cut -d '"' -f 4)
-  [ -z "$LATEST_URL" ] && error "Failed to fetch LATEST_URL from GitHub API."
+    LATEST_URL=$(curl -s https://api.github.com/repos/$CLANG_REPO/releases/latest | grep "browser_download_url.*\.tar\.gz" | cut -d '"' -f 4)
+    [ -z "$LATEST_URL" ] && error "Failed to fetch LATEST_URL from GitHub API."
 
-  info "Downloading Clang from $LATEST_URL"
-  wget -q $LATEST_URL -O "Clang.tar.gz"
-  [ -f "Clang.tar.gz" ] || error "Failed to download Clang tarball."
+    info "Downloading Clang from $LATEST_URL"
+    wget -q $LATEST_URL -O "Clang.tar.gz"
+    [ -f "Clang.tar.gz" ] || error "Failed to download Clang tarball."
 
-  tar -xf Clang.tar.gz
-  rm -f Clang.tar.gz
+    tar -xf Clang.tar.gz
+    rm -f Clang.tar.gz
 
-  cd "$SCRIPT_DIR"
+    cd "$SCRIPT_DIR"
+  fi
 
   export PATH="$CLANG_DIR/bin:$PATH"
   for b in clang ld.lld llvm-ar llvm-nm llvm-strip llvm-objcopy llvm-objdump; do
@@ -166,16 +210,25 @@ build_kernel() {
 
   block_start "📥 CLONE KERNEL SOURCE"
   start_stage
-  if [ -d "$KERNEL_DIR" ]; then
-    warn "Kernel directory '$KERNEL_DIR' already exists. Removing to avoid conflicts."
-    rm -rf "$KERNEL_DIR"
+  if [ "$REUSE_SOURCE" = true ]; then
+    info "Using existing kernel source in '$KERNEL_DIR'."
+  else
+    if [ -d "$KERNEL_DIR" ]; then
+      warn "Kernel directory '$KERNEL_DIR' already exists. Removing to avoid conflicts."
+      rm -rf "$KERNEL_DIR"
+    fi
+    info "Cloning kernel source..."
+    git clone --depth=1 -b "$KERNEL_BRANCH" "$KERNEL_REPO" "$KERNEL_DIR"
   fi
-  git clone --depth=1 -b "$KERNEL_BRANCH" "$KERNEL_REPO" "$KERNEL_DIR"
   info "Kernel source ready"$(stage_time); block_end
 
   block_start "📥 CLONE ANYKERNEL3"
   start_stage
-  git clone --depth=1 "$ANYKERNEL3_GIT" -b "$ANYKERNEL3_BRANCH" "$ANYKERNEL_DIR"
+  if [ "$REUSE_ANYKERNEL" = true ]; then
+    info "Using existing AnyKernel3 source in '$ANYKERNEL_DIR'."
+  else
+    git clone --depth=1 "$ANYKERNEL3_GIT" -b "$ANYKERNEL3_BRANCH" "$ANYKERNEL_DIR"
+  fi
   info "AnyKernel3 ready"$(stage_time); block_end
 
   block_start "🧵 KERNEL COMPILATION"
