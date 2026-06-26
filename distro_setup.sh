@@ -272,7 +272,7 @@ debloat_kde() {
     # Internet/PIM
     falkon konqueror ktorrent kget kmail korganizer kaddressbook kontact akregator neochat tokodon kdeconnect kde-connect
     # Viewers
-    okular gwenview spectacle
+    okular gwenview
     # Utilities
     kcalc kcharselect kdf krfb krdc mediawriter sweeper kcolorchooser kruler kbackup filelight kolourpaint kompare kamera skanpage skanlite kfloppy
     # Misc/Accessibility
@@ -385,25 +385,25 @@ set_legacy_crypto_policy() {
 # 🌌 Install Antigravity 2.0
 # ─────────────────────────────────────────────
 install_antigravity() {
-  log "Installing Antigravity 2.0..."
+  log "Installing Antigravity 2.2.1..."
   
   case "$DISTRO" in
-    fedora) sudo dnf install -y unzip curl ;;
-    arch | manjaro) sudo pacman -S --noconfirm unzip curl ;;
-    ubuntu | debian) sudo apt install -y unzip curl ;;
-    opensuse*) sudo zypper install -y unzip curl ;;
+    fedora) sudo dnf install -y tar curl ;;
+    arch | manjaro) sudo pacman -S --noconfirm tar curl ;;
+    ubuntu | debian) sudo apt install -y tar curl ;;
+    opensuse*) sudo zypper install -y tar curl ;;
   esac
 
   if command -v curl &>/dev/null; then
-    curl -fsSLO https://antigravity.google/download/antigravity-2.0-linux-x64.zip
+    curl -fsSLO https://storage.googleapis.com/antigravity-public/antigravity-hub/2.2.1-5287492581195776/linux-x64/Antigravity.tar.gz
   else
-    wget -qO antigravity-2.0-linux-x64.zip https://antigravity.google/download/antigravity-2.0-linux-x64.zip
+    wget -qO Antigravity.tar.gz https://storage.googleapis.com/antigravity-public/antigravity-hub/2.2.1-5287492581195776/linux-x64/Antigravity.tar.gz
   fi
 
-  unzip -q -o antigravity-2.0-linux-x64.zip
-  rm -f antigravity-2.0-linux-x64.zip
+  tar -xzf Antigravity.tar.gz
+  rm -f Antigravity.tar.gz
 
-  info "Antigravity 2.0 installed."
+  info "Antigravity 2.2.1 installed."
 }
 
 # ─────────────────────────────────────────────
