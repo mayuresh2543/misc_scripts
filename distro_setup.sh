@@ -382,6 +382,31 @@ set_legacy_crypto_policy() {
 }
 
 # ─────────────────────────────────────────────
+# 🌌 Install Antigravity 2.0
+# ─────────────────────────────────────────────
+install_antigravity() {
+  log "Installing Antigravity 2.0..."
+  
+  case "$DISTRO" in
+    fedora) sudo dnf install -y unzip curl ;;
+    arch | manjaro) sudo pacman -S --noconfirm unzip curl ;;
+    ubuntu | debian) sudo apt install -y unzip curl ;;
+    opensuse*) sudo zypper install -y unzip curl ;;
+  esac
+
+  if command -v curl &>/dev/null; then
+    curl -fsSLO https://antigravity.google/download/antigravity-2.0-linux-x64.zip
+  else
+    wget -qO antigravity-2.0-linux-x64.zip https://antigravity.google/download/antigravity-2.0-linux-x64.zip
+  fi
+
+  unzip -q -o antigravity-2.0-linux-x64.zip
+  rm -f antigravity-2.0-linux-x64.zip
+
+  info "Antigravity 2.0 installed."
+}
+
+# ─────────────────────────────────────────────
 # 🧾 Final Summary
 # ─────────────────────────────────────────────
 summary() {
@@ -430,6 +455,9 @@ summary() {
   fi
   if [[ "$LEGACY_CRYPTO_SET" == true ]]; then
     echo -e "  \033[1;35m- 🛡   Legacy crypto policy applied\033[0m"
+  fi
+  if [[ "$ANTIGRAVITY_INSTALLED" == true ]]; then
+    echo -e "  \033[1;35m- 🌌  Antigravity 2.0 installed\033[0m"
   fi
 
   echo -e "\n\033[1;36m📁 Log saved to: $LOG_FILE\033[0m"
@@ -494,6 +522,9 @@ main() {
   fi
 
   setup_firewall
+
+  install_antigravity
+  ANTIGRAVITY_INSTALLED=true
 
   CACHY_KERNEL_APPLIED=false
   ZRAM_CONFIGURED=false
