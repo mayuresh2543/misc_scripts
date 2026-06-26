@@ -27,7 +27,6 @@ SCRIPT_DIR="$(pwd)"
 OUTPUT_DIR="$SCRIPT_DIR/out"
 CLANG_DIR="$SCRIPT_DIR/clang"
 ANYKERNEL_DIR="$SCRIPT_DIR/AnyKernel3"
-ZIP_NAME="Vertex-stone-$(date +%Y%m%d-%H%M).zip"
 
 CLANG_REPO="bachnxuan/aosp_clang_mirror"
 
@@ -101,6 +100,15 @@ read_input() {
     JOBS="$USER_JOBS"
   fi
 
+  read -rp "Do you want to integrate KernelSU? [y/N]: " ans_ksu
+  if [[ "$ans_ksu" =~ ^[Yy]$ ]]; then
+    INTEGRATE_KSU=true
+    ZIP_NAME="DarkVertex-KSU-stone-$(date +%Y%m%d-%H%M).zip"
+  else
+    INTEGRATE_KSU=false
+    ZIP_NAME="DarkVertex-stone-$(date +%Y%m%d-%H%M).zip"
+  fi
+
   block_end
 }
 
@@ -151,6 +159,7 @@ show_summary() {
   info "Kernel Branch     : $KERNEL_BRANCH"
   info "Kernel Directory  : $KERNEL_DIR"
   info "Reuse Source      : $REUSE_SOURCE"
+  info "Integrate KSU     : $INTEGRATE_KSU"
   info "Defconfig         : $DEFCONFIG"
   info "Clang Repo        : $CLANG_REPO"
   info "Clang Directory   : $CLANG_DIR"
@@ -222,6 +231,190 @@ build_kernel() {
   fi
   info "Kernel source ready"$(stage_time); block_end
 
+  if [ "$INTEGRATE_KSU" = true ]; then
+    block_start "🛠️ INTEGRATE KERNELSU"
+    start_stage
+    cd "$KERNEL_DIR"
+    if [ -d "KernelSU" ]; then
+      info "KernelSU appears to be already integrated, skipping setup."
+    else
+      info "Downloading and running ReSukiSU setup script..."
+      curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -
+
+      info "Applying KernelSU Manual Hooks patch..."
+      cat << 'EOF' > ksu_manual_hook.patch
+From d21c720f72953f149c4afac7795ac558f23628bb Mon Sep 17 00:00:00 2001
+From: Vedraj Gawas <gawasvedraj@gmail.com>
+Date: Fri, 15 May 2026 17:03:07 +0000
+Subject: [PATCH] ReSukiSU: Manual Hooks
+
+---
+ fs/exec.c                              | 12 ++++++++++++
+ fs/open.c                              |  9 +++++++++
+ fs/stat.c                              | 23 +++++++++++++++++++++++
+ kernel/reboot.c                        |  8 ++++++++
+ 4 files changed, 52 insertions(+)
+
+diff --git a/fs/exec.c b/fs/exec.c
+index 910b407d267e..f75b170524e3 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -1920,12 +1920,21 @@ int do_execve_file(struct file *file, void *__argv, void *__envp)
+ 	return __do_execve_file(AT_FDCWD, NULL, argv, envp, 0, file);
+ }
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++__attribute__((hot))
++extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
++				void *argv, void *envp, int *flags);
++#endif
++
+ int do_execve(struct filename *filename,
+ 	const char __user *const __user *__argv,
+ 	const char __user *const __user *__envp)
+ {
+ 	struct user_arg_ptr argv = { .ptr.native = __argv };
+ 	struct user_arg_ptr envp = { .ptr.native = __envp };
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
++#endif
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+@@ -1953,6 +1962,9 @@ static int compat_do_execve(struct filename *filename,
+ 		.is_compat = true,
+ 		.ptr.compat = __envp,
+ 	};
++#ifdef CONFIG_KSU_MANUAL_HOOK // 32-bit ksud and 32-on-64 support
++	ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
++#endif
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+diff --git a/fs/open.c b/fs/open.c
+index 3f9f5fda8ebf..f9d5adde41da 100644
+--- a/fs/open.c
++++ b/fs/open.c
+@@ -440,8 +440,17 @@ long do_faccessat(int dfd, const char __user *filename, int mode)
+ 	return res;
+ }
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++__attribute__((hot))
++extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user,
++				int *mode, int *flags);
++#endif
++
+ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+ {
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
++#endif
+ 	return do_faccessat(dfd, filename, mode);
+ }
+ 
+diff --git a/fs/stat.c b/fs/stat.c
+index 298eb77668a7..97b947d55fbd 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -357,6 +357,17 @@ SYSCALL_DEFINE2(newlstat, const char __user *, filename,
+ 	return cp_new_stat(&stat, statbuf);
+ }
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++__attribute__((hot))
++extern int ksu_handle_stat(int *dfd, const char __user **filename_user,
++				int *flags);
++
++extern void ksu_handle_newfstat_ret(unsigned int *fd, struct stat __user **statbuf_ptr);
++#if defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_COMPAT_STAT64)
++extern void ksu_handle_fstat64_ret(unsigned long *fd, struct stat64 __user **statbuf_ptr); // optional
++#endif
++#endif
++
+ #if !defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_SYS_NEWFSTATAT)
+ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+ 		struct stat __user *, statbuf, int, flag)
+@@ -364,6 +375,9 @@ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_stat(&dfd, &filename, &flag);
++#endif
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+@@ -379,6 +393,9 @@ SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
+ 	if (!error)
+ 		error = cp_new_stat(&stat, statbuf);
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_newfstat_ret(&fd, &statbuf);
++#endif
+ 	return error;
+ }
+ #endif
+@@ -506,6 +523,9 @@ SYSCALL_DEFINE2(fstat64, unsigned long, fd, struct stat64 __user *, statbuf)
+ 	if (!error)
+ 		error = cp_new_stat64(&stat, statbuf);
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK // for 32-bit
++	ksu_handle_fstat64_ret(&fd, &statbuf);
++#endif
+ 	return error;
+ }
+ 
+@@ -515,6 +535,9 @@ SYSCALL_DEFINE4(fstatat64, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK // 32-bit su
++	ksu_handle_stat(&dfd, &filename, &flag); 
++#endif
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+diff --git a/kernel/reboot.c b/kernel/reboot.c
+index 790c2f514a55..8cbc25d60cb8 100644
+--- a/kernel/reboot.c
++++ b/kernel/reboot.c
+@@ -310,6 +310,11 @@ DEFINE_MUTEX(system_transition_mutex);
+  *
+  * reboot doesn't sync: do that yourself before calling this.
+  */
++
++#ifdef CONFIG_KSU_MANUAL_HOOK
++extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);
++#endif
++
+ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
+ 		void __user *, arg)
+ {
+@@ -317,6 +322,9 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
+ 	char buffer[256];
+ 	int ret = 0;
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_sys_reboot(magic1, magic2, cmd, &arg);
++#endif
+ 	/* We only trust the superuser with rebooting the system. */
+ 	if (!ns_capable(pid_ns->user_ns, CAP_SYS_BOOT))
+ 		return -EPERM;
+EOF
+      patch -p1 < ksu_manual_hook.patch
+      rm ksu_manual_hook.patch
+
+      info "Enabling KSU configs in $DEFCONFIG..."
+      echo "" >> "arch/arm64/configs/$DEFCONFIG"
+      echo "CONFIG_KSU_MANUAL_HOOK=y" >> "arch/arm64/configs/$DEFCONFIG"
+      echo "CONFIG_TMPFS_XATTR=y" >> "arch/arm64/configs/$DEFCONFIG"
+      sed -i 's/CONFIG_LOCALVERSION="\(.*\)"/CONFIG_LOCALVERSION="\1-KSU"/' "arch/arm64/configs/$DEFCONFIG"
+    fi
+    info "KernelSU integration ready"$(stage_time); block_end
+    cd "$SCRIPT_DIR"
+  fi
+
   block_start "📥 CLONE ANYKERNEL3"
   start_stage
   if [ "$REUSE_ANYKERNEL" = true ]; then
@@ -241,7 +434,7 @@ build_kernel() {
 
   make O="$OUTPUT_DIR" distclean mrproper
   make O="$OUTPUT_DIR" "$DEFCONFIG"
-  make O="$OUTPUT_DIR" -j"$JOBS" LOCALVERSION= KBUILD_BUILD_USER="$KBUILD_BUILD_USER" KBUILD_BUILD_HOST="$KBUILD_BUILD_HOST"
+  make O="$OUTPUT_DIR" -j"$JOBS" KBUILD_BUILD_USER="$KBUILD_BUILD_USER" KBUILD_BUILD_HOST="$KBUILD_BUILD_HOST"
 
   IMAGE="$OUTPUT_DIR/arch/arm64/boot/Image"
   [ -f "$IMAGE" ] || error "Kernel image not found."
