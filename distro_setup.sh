@@ -276,7 +276,7 @@ debloat_kde() {
     # Utilities
     kcalc kcharselect kdf krfb krdc mediawriter sweeper kcolorchooser kruler kbackup filelight kolourpaint kompare kamera skanpage skanlite kfloppy
     # Misc/Accessibility
-    kmouth kmousetool kmag ktimer plasma-welcome kfind knotes kweather kclock kcron kgpg kleopatra partitionmanager kgamma5 abrt kwalletmanager5 kwalletmanager print-manager
+    kmouth kmousetool kmag ktimer plasma-welcome kfind knotes kweather kclock kcron kgpg kleopatra partitionmanager kde-partitionmanager kgamma5 abrt kwalletmanager5 kwalletmanager print-manager
   )
 
   for pkg in "${bloat_apps[@]}"; do
