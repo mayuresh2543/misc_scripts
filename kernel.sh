@@ -100,13 +100,21 @@ read_input() {
     JOBS="$USER_JOBS"
   fi
 
-  read -rp "Do you want to integrate KernelSU? [y/N]: " ans_ksu
-  if [[ "$ans_ksu" =~ ^[Yy]$ ]]; then
-    INTEGRATE_KSU=true
-    ZIP_NAME="DarkVertex-KSU-stone-$(date +%Y%m%d-%H%M).zip"
-  else
+  read -rp "Do you want to integrate ReSukiSU? [y/N]: " ans_resukisu
+  if [[ "$ans_resukisu" =~ ^[Yy]$ ]]; then
+    INTEGRATE_RESUKISU=true
     INTEGRATE_KSU=false
-    ZIP_NAME="DarkVertex-stone-$(date +%Y%m%d-%H%M).zip"
+    ZIP_NAME="DarkVertex-ReSukiSU-stone-$(date +%Y%m%d-%H%M).zip"
+  else
+    INTEGRATE_RESUKISU=false
+    read -rp "Do you want to integrate standard KernelSU? [y/N]: " ans_ksu
+    if [[ "$ans_ksu" =~ ^[Yy]$ ]]; then
+      INTEGRATE_KSU=true
+      ZIP_NAME="DarkVertex-KSU-stone-$(date +%Y%m%d-%H%M).zip"
+    else
+      INTEGRATE_KSU=false
+      ZIP_NAME="DarkVertex-stone-$(date +%Y%m%d-%H%M).zip"
+    fi
   fi
 
   block_end
@@ -231,12 +239,12 @@ build_kernel() {
   fi
   info "Kernel source ready"$(stage_time); block_end
 
-  if [ "$INTEGRATE_KSU" = true ]; then
-    block_start "🛠️ INTEGRATE KERNELSU"
+  if [ "$INTEGRATE_RESUKISU" = true ]; then
+    block_start "🛠️ INTEGRATE RESUKISU"
     start_stage
     cd "$KERNEL_DIR"
     if [ -d "KernelSU" ]; then
-      info "KernelSU appears to be already integrated, skipping setup."
+      info "ReSukiSU appears to be already integrated, skipping setup."
     else
       info "Downloading and running ReSukiSU setup script..."
       curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -
@@ -409,6 +417,55 @@ EOF
       echo "" >> "arch/arm64/configs/$DEFCONFIG"
       echo "CONFIG_KSU_MANUAL_HOOK=y" >> "arch/arm64/configs/$DEFCONFIG"
       echo "CONFIG_TMPFS_XATTR=y" >> "arch/arm64/configs/$DEFCONFIG"
+      sed -i 's/CONFIG_LOCALVERSION="\(.*\)"/CONFIG_LOCALVERSION="\1-ReSukiSU"/' "arch/arm64/configs/$DEFCONFIG"
+    fi
+    info "ReSukiSU integration ready"$(stage_time); block_end
+    cd "$SCRIPT_DIR"
+  elif [ "$INTEGRATE_KSU" = true ]; then
+    block_start "🛠️ INTEGRATE KERNELSU"
+    start_stage
+    cd "$KERNEL_DIR"
+    if [ -d "KernelSU" ]; then
+      info "KernelSU appears to be already integrated, skipping setup."
+    else
+      info "Downloading and running standard KernelSU setup script..."
+      curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -
+
+      info "Applying KSU AVC Audit patch..."
+      cat << 'EOF' > ksu_avc_audit.patch
+--- a/security/selinux/avc.c
++++ b/security/selinux/avc.c
+@@ -700,6 +700,10 @@
+  	return 0;
+  }
+  
++#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
++extern void ksu_slow_avc_audit(u32 *tsid);
++#endif
++
+ /* This is the slow part of avc audit with big stack footprint */
+ noinline int slow_avc_audit(struct selinux_state *state,
+ 			    u32 ssid, u32 tsid, u16 tclass,
+@@ -720,6 +724,9 @@
+ 	struct common_audit_data stack_data;
+ 	struct selinux_audit_data sad;
+ 
++#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
++	ksu_slow_avc_audit(&tsid);
++#endif
+ 	if (!a) {
+ 		a = &stack_data;
+ 		a->type = LSM_AUDIT_DATA_NONE;
+EOF
+      patch -p1 < ksu_avc_audit.patch || warn "Failed to apply AVC Audit patch!"
+      rm -f ksu_avc_audit.patch
+
+      info "Enabling KSU configs in $DEFCONFIG..."
+      echo "" >> "arch/arm64/configs/$DEFCONFIG"
+      echo "CONFIG_KSU_TAMPER_SYSCALL_TABLE=y" >> "arch/arm64/configs/$DEFCONFIG"
+      sed -i 's/^CONFIG_CFI_CLANG=.*/# CONFIG_CFI_CLANG is not set/g' "arch/arm64/configs/$DEFCONFIG"
+      sed -i 's/^# CONFIG_CFI_CLANG is not set//g' "arch/arm64/configs/$DEFCONFIG"
+      echo "CONFIG_CFI_CLANG=n" >> "arch/arm64/configs/$DEFCONFIG"
       sed -i 's/CONFIG_LOCALVERSION="\(.*\)"/CONFIG_LOCALVERSION="\1-KSU"/' "arch/arm64/configs/$DEFCONFIG"
     fi
     info "KernelSU integration ready"$(stage_time); block_end
@@ -434,7 +491,7 @@ EOF
 
   make O="$OUTPUT_DIR" distclean mrproper
   make O="$OUTPUT_DIR" "$DEFCONFIG"
-  make O="$OUTPUT_DIR" -j"$JOBS" KBUILD_BUILD_USER="$KBUILD_BUILD_USER" KBUILD_BUILD_HOST="$KBUILD_BUILD_HOST"
+  make O="$OUTPUT_DIR" -j"$JOBS" LOCALVERSION= KBUILD_BUILD_USER="$KBUILD_BUILD_USER" KBUILD_BUILD_HOST="$KBUILD_BUILD_HOST"
 
   IMAGE="$OUTPUT_DIR/arch/arm64/boot/Image"
   [ -f "$IMAGE" ] || error "Kernel image not found."
