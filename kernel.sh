@@ -431,14 +431,25 @@ EOF
       info "Downloading and running standard KernelSU setup script..."
       curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -
 
-      info "Applying KSU AVC Audit patch..."
+      info "Applying KernelSU AVC Audit patch..."
       cat << 'EOF' > ksu_avc_audit.patch
+From b6248db061232e08ccd13fe049d4b97325e3cdc4 Mon Sep 17 00:00:00 2001
+From: mayuresh2543 <mayureshnanal846@gmail.com>
+Date: Sat, 27 Jun 2026 12:08:50 +0530
+Subject: [PATCH] KernelSU: selinux: avc: Import slow_avc_audit hook
+
+---
+ security/selinux/avc.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/security/selinux/avc.c b/security/selinux/avc.c
+index 7e1e6bc881b0..ca123b0ef410 100644
 --- a/security/selinux/avc.c
 +++ b/security/selinux/avc.c
-@@ -700,6 +700,10 @@
-  	return 0;
-  }
-  
+@@ -753,6 +753,10 @@ static void avc_audit_post_callback(struct audit_buffer *ab, void *a)
+ 	}
+ }
+ 
 +#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
 +extern void ksu_slow_avc_audit(u32 *tsid);
 +#endif
@@ -446,9 +457,9 @@ EOF
  /* This is the slow part of avc audit with big stack footprint */
  noinline int slow_avc_audit(struct selinux_state *state,
  			    u32 ssid, u32 tsid, u16 tclass,
-@@ -720,6 +724,9 @@
- 	struct common_audit_data stack_data;
- 	struct selinux_audit_data sad;
+@@ -765,6 +769,9 @@ noinline int slow_avc_audit(struct selinux_state *state,
+ 	if (WARN_ON(!tclass || tclass >= ARRAY_SIZE(secclass_map)))
+ 		return -EINVAL;
  
 +#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
 +	ksu_slow_avc_audit(&tsid);
